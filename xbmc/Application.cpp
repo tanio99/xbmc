@@ -3041,6 +3041,7 @@ void CApplication::PlaybackCleanup()
     else
     {
       //  resets to res_desktop or look&feel resolution (including refreshrate)
+      SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aspect", 2);
       CServiceBroker::GetWinSystem()->GetGfxContext().SetFullScreenVideo(false);
     }
 #ifdef TARGET_DARWIN_IOS

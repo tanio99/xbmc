@@ -131,8 +131,6 @@ fi
 mkdir -p "ffmpeg-${VERSION}"
 cd "ffmpeg-${VERSION}" || exit 2
 tar --strip-components=1 -xf $MYDIR/${ARCHIVE}
-cp ../*.patch .
-for file in *.patch; do patch -p1 < $file; done
 
 CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS" \
 ./configure --prefix=$FFMPEG_PREFIX \
