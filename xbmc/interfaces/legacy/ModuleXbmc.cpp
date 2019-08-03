@@ -122,6 +122,36 @@ namespace XBMCAddon
         CApplicationMessenger::GetInstance().PostMsg(TMSG_EXECUTE_BUILT_IN, -1, -1, nullptr, function);
     }
 
+    void setosmcwalkthroughstatus(int state)
+    {
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_SETOSMCWALKTHROUGHSTATE, state);
+    }
+
+    void setskin(const char* skin)
+    {
+      XBMC_TRACE;
+      if (! skin)
+      return;
+      CServiceBroker::GetSettingsComponent()->GetSettings()->SetString(CSettings::SETTING_LOOKANDFEEL_SKIN, skin);
+    }
+
+    void sethostname(const char* hostname)
+    {
+      XBMC_TRACE;
+      if (! hostname)
+      return;
+      CServiceBroker::GetSettingsComponent()->GetSettings()->SetString(CSettings::SETTING_SERVICES_DEVICENAME, hostname);
+    }
+
+    void settimezone(const char* timezone)
+    {
+      XBMC_TRACE;
+      if (! timezone)
+      return;
+      CServiceBroker::GetSettingsComponent()->GetSettings()->SetString(CSettings::SETTING_LOCALE_TIMEZONE, timezone);
+    }
+
+
     String executeJSONRPC(const char* jsonrpccommand)
     {
       XBMC_TRACE;
@@ -510,6 +540,11 @@ namespace XBMCAddon
       if (ae)
         ae->Resume();
     }
+
+   void saveSettings()
+   {
+      CServiceBroker::GetSettingsComponent()->GetSettings()->Save();
+   }
 
     String convertLanguage(const char* language, int format)
     {

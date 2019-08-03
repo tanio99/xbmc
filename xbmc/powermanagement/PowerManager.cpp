@@ -110,7 +110,9 @@ bool CPowerManager::Powerdown()
 
 bool CPowerManager::Suspend()
 {
-  return (CanSuspend() && m_instance->Suspend());
+  CLog::Log(LOGNOTICE, "Activating standby mode");
+  g_application.ActivateScreenSaverStandby();
+  return true;
 }
 
 bool CPowerManager::Hibernate()

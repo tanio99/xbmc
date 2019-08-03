@@ -41,7 +41,7 @@ namespace ADDON
       mRevision = mUpstream.substr(pos+1);
       if (mRevision.find_first_not_of(VALID_ADDON_VERSION_CHARACTERS) != std::string::npos)
       {
-        CLog::Log(LOGERROR, "AddonVersion: {} is not a valid revision number", mRevision);
+        CLog::Log(LOGDEBUG, "AddonVersion: {} is not a valid revision number", mRevision);
         mRevision = "";
       }
       mUpstream.erase(pos);

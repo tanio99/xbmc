@@ -52,6 +52,7 @@
 #include "threads/SingleLock.h"
 #include "utils/CharsetConverter.h"
 #include "utils/log.h"
+#include "utils/Digest.h"
 #include "utils/RssManager.h"
 #include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
@@ -65,6 +66,7 @@
 
 using namespace KODI;
 using namespace XFILE;
+using KODI::UTILITY::CDigest;
 
 const std::string CSettings::SETTING_LOOKANDFEEL_SKIN = "lookandfeel.skin";
 const std::string CSettings::SETTING_LOOKANDFEEL_SKINSETTINGS = "lookandfeel.skinsettings";
@@ -331,6 +333,10 @@ const std::string CSettings::SETTING_VIDEOSCREEN_RESOLUTION = "videoscreen.resol
 const std::string CSettings::SETTING_VIDEOSCREEN_SCREENMODE = "videoscreen.screenmode";
 const std::string CSettings::SETTING_VIDEOSCREEN_FAKEFULLSCREEN = "videoscreen.fakefullscreen";
 const std::string CSettings::SETTING_VIDEOSCREEN_BLANKDISPLAYS = "videoscreen.blankdisplays";
+const std::string CSettings::SETTING_VIDEOSCREEN_FORCERGB = "videoscreen.forcergb";
+const std::string CSettings::SETTING_VIDEOSCREEN_LOCKHPD = "videoscreen.lockhpd";
+const std::string CSettings::SETTING_VIDEOSCREEN_MUTEHDMI = "videoscreen.mutehdmi";
+const std::string CSettings::SETTING_VIDEOSCREEN_FORCE422 = "videoscreen.force422";
 const std::string CSettings::SETTING_VIDEOSCREEN_STEREOSCOPICMODE = "videoscreen.stereoscopicmode";
 const std::string CSettings::SETTING_VIDEOSCREEN_PREFEREDSTEREOSCOPICMODE = "videoscreen.preferedstereoscopicmode";
 const std::string CSettings::SETTING_VIDEOSCREEN_NOOFBUFFERS = "videoscreen.noofbuffers";
@@ -338,7 +344,7 @@ const std::string CSettings::SETTING_VIDEOSCREEN_3DLUT = "videoscreen.cms3dlut";
 const std::string CSettings::SETTING_VIDEOSCREEN_DISPLAYPROFILE = "videoscreen.displayprofile";
 const std::string CSettings::SETTING_VIDEOSCREEN_GUICALIBRATION = "videoscreen.guicalibration";
 const std::string CSettings::SETTING_VIDEOSCREEN_TESTPATTERN = "videoscreen.testpattern";
-const std::string CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGE = "videoscreen.limitedrange";
+const std::string CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGEAML = "videoscreen.limitedrangeaml";
 const std::string CSettings::SETTING_VIDEOSCREEN_FRAMEPACKING = "videoscreen.framepacking";
 const std::string CSettings::SETTING_AUDIOOUTPUT_AUDIODEVICE = "audiooutput.audiodevice";
 const std::string CSettings::SETTING_AUDIOOUTPUT_CHANNELS = "audiooutput.channels";
@@ -486,6 +492,17 @@ bool CSettings::Save(const std::string &file)
   CXBMCTinyXML xmlDoc;
   if (!SaveValuesToXml(xmlDoc))
     return false;
+
+  // Avoid saving if the settings saved earlier are indetical to the current ones
+  if (CFile::Exists(file))
+  {
+    std::string fileMD5 = CUtil::GetFileDigest(file, KODI::UTILITY::CDigest::Type::MD5);
+    TiXmlPrinter xmlPrinter;
+    xmlDoc.Accept(&xmlPrinter);
+    std::string settingsMD5 = CDigest::Calculate(CDigest::Type::MD5,(xmlPrinter.CStr()));
+    if (fileMD5 == settingsMD5)
+      return true;
+  }
 
   return xmlDoc.SaveFile(file);
 }
@@ -841,6 +858,8 @@ void CSettings::InitializeISettingCallbacks()
   settingSet.insert(CSettings::SETTING_VIDEOSCREEN_SCREEN);
   settingSet.insert(CSettings::SETTING_VIDEOSCREEN_RESOLUTION);
   settingSet.insert(CSettings::SETTING_VIDEOSCREEN_SCREENMODE);
+  settingSet.insert(CSettings::SETTING_VIDEOSCREEN_FORCE422);
+  settingSet.insert(CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGEAML);
   settingSet.insert(CSettings::SETTING_VIDEOSCREEN_MONITOR);
   settingSet.insert(CSettings::SETTING_VIDEOSCREEN_PREFEREDSTEREOSCOPICMODE);
   settingSet.insert(CSettings::SETTING_VIDEOSCREEN_3DLUT);

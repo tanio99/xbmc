@@ -278,7 +278,7 @@ CCPUInfo::CCPUInfo(void)
   if (m_fProcTemperature == NULL)
     m_fProcTemperature = fopen("/sys/class/thermal/thermal_zone0/temp", "r");  // On Raspberry PIs
 
-  m_fCPUFreq = fopen ("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "r");
+  m_fCPUFreq = fopen ("/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq", "r");
   if (!m_fCPUFreq)
   {
     m_cpuInfoForFreq = true;

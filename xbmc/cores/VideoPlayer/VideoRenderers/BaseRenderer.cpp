@@ -118,6 +118,18 @@ void CBaseRenderer::CalcNormalRenderRect(float offsetX, float offsetY, float wid
 
   float outputFrameRatio = inputFrameRatio / CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().fPixelRatio;
 
+  if (CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iWidth == 720)
+  {
+    if (CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iHeight == 480)
+      outputFrameRatio = inputFrameRatio / 8.0f * 9.0f;
+    else
+      outputFrameRatio = inputFrameRatio / 16.0f * 15.0f;
+
+    if (CDisplaySettings::GetInstance().GetPixelRatio() == 1.0f ||
+        inputFrameRatio > 1.5f)
+      outputFrameRatio *= 3.0f / 4.0f;
+  }
+
   // allow a certain error to maximize size of render area
   float fCorrection = width / height / outputFrameRatio - 1.0f;
   float fAllowed = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_VIDEOPLAYER_ERRORINASPECT) * 0.01f;
@@ -418,7 +430,7 @@ void CBaseRenderer::SetViewMode(int viewMode)
     CDisplaySettings::GetInstance().SetZoomAmount(1.0);
     // stretch to the limits of the 16:9 screen.
     // incorrect behaviour, but it's what the users want, so...
-    CDisplaySettings::GetInstance().SetPixelRatio((screenWidth / screenHeight) * info.fPixelRatio / sourceFrameRatio);
+    CDisplaySettings::GetInstance().SetPixelRatio((16.0f / 9.0f) * info.fPixelRatio / sourceFrameRatio);
     bool nonlin = (is43 && CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_VIDEOPLAYER_STRETCH43) == ViewModeStretch16x9Nonlin) ||
                   m_videoSettings.m_ViewMode == ViewModeStretch16x9Nonlin;
     CDisplaySettings::GetInstance().SetNonLinearStretched(nonlin);

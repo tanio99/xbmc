@@ -17,6 +17,8 @@
 
 struct DemuxCryptoInfo;
 
+struct AVPacket;
+
 typedef struct DemuxPacket
 {
   DemuxPacket() = default;
@@ -33,6 +35,7 @@ typedef struct DemuxPacket
   double pts = DVD_NOPTS_VALUE;
   double dts = DVD_NOPTS_VALUE;
   double duration = 0; // duration in DVD_TIME_BASE if available
+  AVPacket *pkt; // to allow packet to be freed
   int dispTime = 0;
   bool recoveryPoint = false;
 

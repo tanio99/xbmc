@@ -687,6 +687,8 @@ std::vector<std::string> CMediaManager::GetDiskUsage()
 
 void CMediaManager::OnStorageAdded(const std::string &label, const std::string &path)
 {
+if (path== "/boot")
+  return;
 #ifdef HAS_DVD_DRIVE
   const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
   if (settings->GetInt(CSettings::SETTING_AUDIOCDS_AUTOACTION) != AUTOCD_NONE || settings->GetBool(CSettings::SETTING_DVDS_AUTORUN))

@@ -22,8 +22,13 @@ void CDVDDemuxUtils::FreeDemuxPacket(DemuxPacket* pPacket)
 {
   if (pPacket)
   {
-    if (pPacket->pData)
-      _aligned_free(pPacket->pData);
+    if (pPacket->pkt)
+    {
+      av_free_packet(pPacket->pkt);
+      delete pPacket->pkt;
+    }
+    else if (pPacket->pData) _aligned_free(pPacket->pData);
+
     if (pPacket->iSideDataElems)
     {
       AVPacket avPkt;

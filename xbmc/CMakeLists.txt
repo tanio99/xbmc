@@ -21,6 +21,7 @@ set(SOURCES Application.cpp
             LangInfo.cpp
             MediaSource.cpp
             NfoFile.cpp
+            OSMCHelper.cpp
             PasswordManager.cpp
             PlayListPlayer.cpp
             PartyModeManager.cpp
@@ -67,6 +68,7 @@ set(HEADERS AppParamParser.h
             LangInfo.h
             MediaSource.h
             NfoFile.h
+	    OSMCHelper.h
             PartyModeManager.h
             PasswordManager.h
             PlayListPlayer.h

@@ -31,6 +31,7 @@
 #include "threads/SingleLock.h"
 #include "utils/log.h"
 #include "utils/StringUtils.h"
+#include "utils/SysfsUtils.h"
 #include "utils/Variant.h"
 #include "utils/XMLUtils.h"
 #include "rendering/RenderSystem.h"
@@ -257,7 +258,6 @@ bool CDisplaySettings::OnSettingChanging(std::shared_ptr<const CSetting> setting
 {
   if (setting == NULL)
     return false;
-
   const std::string &settingId = setting->GetId();
   if (settingId == CSettings::SETTING_VIDEOSCREEN_RESOLUTION ||
       settingId == CSettings::SETTING_VIDEOSCREEN_SCREEN)
@@ -328,6 +328,42 @@ bool CDisplaySettings::OnSettingChanging(std::shared_ptr<const CSetting> setting
       m_resolutionChangeAborted = false;
 
     return true;
+  }
+  else if (settingId == CSettings::SETTING_VIDEOSCREEN_FORCE422){
+    std::string attr = "";
+    SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/attr", attr);
+
+    if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_FORCE422)) {
+      if (attr.find("444") != std::string::npos ||
+          attr.find("422") != std::string::npos ||
+          attr.find("420") != std::string::npos)
+        attr.replace(attr.find("4"),3,"422").append("now");
+      else
+        attr.append("422now");
+    }
+    else {
+      if (attr.find("422") != std::string::npos)
+        attr.erase(attr.find("4"),3);
+      attr.append("now");
+    }
+    CLog::Log(LOGDEBUG, "CDisplaySettings::OnSettingChanging -- setting 422 output, attr = %s", attr.c_str());
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/attr", attr.c_str());
+  }
+  else if (settingId == CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGEAML)
+  {
+    int range_control;
+    std::string attr = "";
+
+    SysfsUtils::GetInt("/sys/module/am_vecm/parameters/range_control", range_control);
+    if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGEAML)) 
+      range_control &= 1;
+    else
+      range_control |= 2;
+    CLog::Log(LOGDEBUG, "CDisplaySettings::OnSettingChanging -- setting quantization range to %s", range_control & 2 ? "full" : "limited");
+    SysfsUtils::SetInt("/sys/module/am_vecm/parameters/range_control", range_control);
+    SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/attr", attr);
+    attr.append("now");
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/attr", attr.c_str());
   }
 #if defined(HAVE_X11) || defined(TARGET_WINDOWS_DESKTOP)
   else if (settingId == CSettings::SETTING_VIDEOSCREEN_BLANKDISPLAYS)
@@ -658,13 +694,9 @@ std::string CDisplaySettings::GetStringFromResolution(RESOLUTION resolution, flo
   if (resolution >= RES_DESKTOP && resolution < (RESOLUTION)CDisplaySettings::GetInstance().ResolutionInfoSize())
   {
     const RESOLUTION_INFO &info = CDisplaySettings::GetInstance().GetResolutionInfo(resolution);
-    // also handle RES_DESKTOP resolutions with non-default refresh rates
-    if (resolution != RES_DESKTOP || (refreshrate > 0.0f && refreshrate != info.fRefreshRate))
-    {
-      return StringUtils::Format("%05i%05i%09.5f%s",
-                                 info.iScreenWidth, info.iScreenHeight,
-                                 refreshrate > 0.0f ? refreshrate : info.fRefreshRate, ModeFlagsToString(info.dwFlags, true).c_str());
-    }
+    return StringUtils::Format("%05i%05i%09.5f%s",
+        info.iScreenWidth, info.iScreenHeight,
+        refreshrate > 0.0f ? refreshrate : info.fRefreshRate, ModeFlagsToString(info.dwFlags, true).c_str());
   }
 
   return "DESKTOP";
@@ -681,7 +713,7 @@ RESOLUTION CDisplaySettings::GetResolutionForScreen()
 
 static inline bool ModeSort(std::pair<std::string, std::string> i,std::pair<std::string, std::string> j)
 {
-  return (i.second > j.second);
+  return (i.second < j.second);
 }
 
 void CDisplaySettings::SettingOptionsModesFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data)

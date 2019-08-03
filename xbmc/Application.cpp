@@ -186,6 +186,7 @@
 
 #if defined(HAS_LIBAMCODEC)
 #include "utils/AMLUtils.h"
+#include "utils/SysfsUtils.h"
 #endif
 
 //TODO: XInitThreads
@@ -229,6 +230,7 @@ CApplication::CApplication(void)
 #endif
   m_itemCurrentFile(new CFileItem)
   , m_pInertialScrollingHandler(new CInertialScrollingHandler())
+  , m_eOSMCWalkthroughState(OSMC_WALKTHROUGH_NOTRUNNING)
   , m_WaitingExternalCalls(0)
   , m_playerEvent(true, true)
 {
@@ -418,6 +420,7 @@ bool CApplication::Create(const CAppParamParser &params)
   CopyUserDataIfNeeded("special://masterprofile/", "RssFeeds.xml");
   CopyUserDataIfNeeded("special://masterprofile/", "favourites.xml");
   CopyUserDataIfNeeded("special://masterprofile/", "Lircmap.xml");
+  CopyUserDataIfNeeded("special://masterprofile/", "sources.xml");
 
   //! @todo - move to CPlatformXXX
   #ifdef TARGET_DARWIN_IOS
@@ -462,6 +465,7 @@ bool CApplication::Create(const CAppParamParser &params)
 //#elif defined(some_ID) // uncomment for special version/fork
 //  specialVersion = " (version for XXXX)";
 #endif
+  specialVersion = " (version for Vero)";
   CLog::Log(LOGNOTICE, "Using %s %s x%d build%s", buildType.c_str(), CSysInfo::GetAppName().c_str(), g_sysinfo.GetXbmcBitness(), specialVersion.c_str());
   CLog::Log(LOGNOTICE, "%s compiled %s by %s for %s %s %d-bit %s (%s)", CSysInfo::GetAppName().c_str(), CSysInfo::GetBuildDate(), g_sysinfo.GetUsedCompilerNameAndVer().c_str(), g_sysinfo.GetBuildTargetPlatformName().c_str(),
             g_sysinfo.GetBuildTargetCpuFamily().c_str(), g_sysinfo.GetXbmcBitness(), g_sysinfo.GetBuildTargetPlatformVersionDecoded().c_str(),
@@ -542,6 +546,7 @@ bool CApplication::Create(const CAppParamParser &params)
     return false;
 
   CLog::Log(LOGINFO, "creating subdirectories");
+  CServiceBroker::GetSettingsComponent()->GetSettings()->SetString(CSettings::SETTING_SERVICES_DEVICENAME, hostname);
   const std::shared_ptr<CProfileManager> profileManager = m_pSettingsComponent->GetProfileManager();
   const std::shared_ptr<CSettings> settings = m_pSettingsComponent->GetSettings();
   CLog::Log(LOGINFO, "userdata folder: %s", CURL::GetRedacted(profileManager->GetProfileUserDataFolder()).c_str());
@@ -1022,8 +1027,11 @@ void CApplication::OnSettingChanged(std::shared_ptr<const CSetting> setting)
     {
       // now we can finally reload skins
       std::string builtin("ReloadSkin");
-      if (settingId == CSettings::SETTING_LOOKANDFEEL_SKIN && m_confirmSkinChange)
+      if (settingId == CSettings::SETTING_LOOKANDFEEL_SKIN && m_confirmSkinChange && m_eOSMCWalkthroughState != OSMC_WALKTHROUGH_ISRUNNING)
         builtin += "(confirm)";
+     // We need to set ISDONE first so reloading is allowed
+     if (m_eOSMCWalkthroughState == OSMC_WALKTHROUGH_ISRUNNING)
+        m_eOSMCWalkthroughState = OSMC_WALKTHROUGH_ISDONE;
       CApplicationMessenger::GetInstance().PostMsg(TMSG_EXECUTE_BUILT_IN, -1, -1, nullptr, builtin);
     }
   }
@@ -1146,6 +1154,17 @@ void CApplication::ReloadSkin(bool confirm/*=false*/)
   if (!g_SkinInfo || m_bInitializing)
     return; // Don't allow reload before skin is loaded by system
 
+  if (m_eOSMCWalkthroughState == OSMC_WALKTHROUGH_ISRUNNING || m_eOSMCWalkthroughState == OSMC_WALKTHROUGH_NOTRUNNING)
+  {
+     CLog::Log(LOGINFO, "Suppressing skin reload as the walkthrough is running");
+     return;
+  }
+
+  if (m_SkinReloading) {
+    CLog::Log(LOGINFO, "Suppressing skin reload as we are already doing so");
+    return;
+  }
+
   std::string oldSkin = g_SkinInfo->ID();
 
   CGUIMessage msg(GUI_MSG_LOAD_SKIN, -1, CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow());
@@ -1153,7 +1172,11 @@ void CApplication::ReloadSkin(bool confirm/*=false*/)
 
   const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
   std::string newSkin = settings->GetString(CSettings::SETTING_LOOKANDFEEL_SKIN);
-  if (LoadSkin(newSkin))
+  m_SkinReloading = true;
+  bool skinLoaded = LoadSkin(newSkin);
+  m_SkinReloading = false;
+  
+  if (skinLoaded)
   {
     /* The Reset() or SetString() below will cause recursion, so the m_confirmSkinChange boolean is set so as to not prompt the
        user as to whether they want to keep the current skin. */
@@ -2030,8 +2053,10 @@ void CApplication::OnApplicationMessage(ThreadMessage* pMsg)
   switch (msg)
   {
   case TMSG_POWERDOWN:
-    Stop(EXITCODE_POWERDOWN);
+    CApplicationMessenger::GetInstance().PostMsg(TMSG_SETOSMCWALKTHROUGHSTATE, 2);
+    m_ShuttingDown = true;
     CServiceBroker::GetPowerManager().Powerdown();
+    Stop(EXITCODE_POWERDOWN);
     break;
 
   case TMSG_QUIT:
@@ -2056,8 +2081,10 @@ void CApplication::OnApplicationMessage(ThreadMessage* pMsg)
 
   case TMSG_RESTART:
   case TMSG_RESET:
-    Stop(EXITCODE_REBOOT);
+    CApplicationMessenger::GetInstance().PostMsg(TMSG_SETOSMCWALKTHROUGHSTATE, 2);
+    m_ShuttingDown = true;
     CServiceBroker::GetPowerManager().Reboot();
+    Stop(EXITCODE_REBOOT);
     break;
 
   case TMSG_RESTARTAPP:
@@ -2108,7 +2135,36 @@ void CApplication::OnApplicationMessage(ThreadMessage* pMsg)
   }
   break;
 
-  case TMSG_NETWORKMESSAGE:
+ case TMSG_SETOSMCWALKTHROUGHSTATE:
+ {
+     switch (pMsg->param1)
+     {
+         case 0:
+             g_application.SetOSMCWalkthroughState(g_application.OSMC_WALKTHROUGH_NOTRUNNING);
+             break;
+         case 1:
+             g_application.SetOSMCWalkthroughState(g_application.OSMC_WALKTHROUGH_ISRUNNING);
+             break;
+         case 2:
+             g_application.SetOSMCWalkthroughState(g_application.OSMC_WALKTHROUGH_ISDONE);
+             break;
+      }
+      break;
+  }
+
+  case TMSG_AML_RESIZE:
+  {
+    if (! m_appPlayer.IsPlayingVideo()) {
+      CDisplaySettings::GetInstance().ClearCustomResolutions();
+      CServiceBroker::GetWinSystem()->UpdateResolutions();
+      CDisplaySettings::GetInstance().SetCurrentResolution(RES_DESKTOP, true);
+      CServiceBroker::GetWinSystem()->GetGfxContext().SetVideoResolution(RES_DESKTOP, true);
+      CLog::Log(LOGNOTICE, "Updated resolutions and set desktop");
+    }
+  }
+
+
+ case TMSG_NETWORKMESSAGE:
     m_ServiceManager->GetNetwork().NetworkMessage((CNetwork::EMESSAGE)pMsg->param1, pMsg->param2);
     break;
 
@@ -2557,25 +2613,6 @@ void CApplication::Stop(int exitCode)
 
     g_alarmClock.StopThread();
 
-    CLog::Log(LOGNOTICE, "Storing total System Uptime");
-    g_sysinfo.SetTotalUptime(g_sysinfo.GetTotalUptime() + (int)(CTimeUtils::GetFrameTime() / 60000));
-
-    // Update the settings information (volume, uptime etc. need saving)
-    if (CFile::Exists(CServiceBroker::GetSettingsComponent()->GetProfileManager()->GetSettingsFile()))
-    {
-      CLog::Log(LOGNOTICE, "Saving settings");
-      CServiceBroker::GetSettingsComponent()->GetSettings()->Save();
-    }
-    else
-      CLog::Log(LOGNOTICE, "Not saving settings (settings.xml is not present)");
-
-    // kodi may crash or deadlock during exit (shutdown / reboot) due to
-    // either a bug in core or misbehaving addons. so try saving
-    // skin settings early
-    CLog::Log(LOGNOTICE, "Saving skin settings");
-    if (g_SkinInfo != nullptr)
-      g_SkinInfo->SaveSettings();
-
     m_bStop = true;
     // Add this here to keep the same ordering behaviour for now
     // Needs cleaning up
@@ -2647,6 +2684,12 @@ void CApplication::Stop(int exitCode)
   cleanup_emu_environ();
 
   Sleep(200);
+}
+
+void CApplication::SetOSMCWalkthroughState(OSMCWalkthroughState state)
+{
+ m_eOSMCWalkthroughState = state;
+ CServiceBroker::GetRepositoryUpdater().ScheduleUpdate();
 }
 
 bool CApplication::PlayMedia(CFileItem& item, const std::string &player, int iPlaylist)
@@ -3432,6 +3475,9 @@ bool CApplication::WakeUpScreenSaverAndDPMS(bool bPowerOffKeyPressed /* = false 
 
 bool CApplication::WakeUpScreenSaver(bool bPowerOffKeyPressed /* = false */)
 {
+  // was vero in standby?
+  if (m_bVeroStandby)
+        ToggleStandby();
   if (m_iScreenSaveLock == 2)
     return false;
 
@@ -3608,6 +3654,59 @@ void CApplication::CheckScreenSaverAndDPMS()
   }
 }
 
+//activate screensaver for OSMC
+void CApplication::ActivateScreenSaverStandby()
+{
+  CLog::Log(LOGINFO, "Activating Vero standby mode");
+    if (m_appPlayer.IsPlayingVideo())
+      StopPlaying();
+  ToggleStandby();
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::GUI, "xbmc", "OnScreensaverActivated");
+  CServiceBroker::GetGUI()->GetWindowManager().CloseDialogs(true);
+}
+
+void CApplication::ToggleStandby()
+{
+  CLog::Log(LOGINFO, "Toggle standby state is %s", m_bVeroStandby ? "waking" : "sleeping");
+  int sysfs_toggle = m_bVeroStandby;
+  CLog::Log(LOGINFO, "CApplication::ToggleStandby -- Toggle TMDS clock to %d", sysfs_toggle);
+  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/phy", sysfs_toggle);
+  CLog::Log(LOGINFO, "CApplication::ToggleStandby -- Toggle LED brightness to %d", sysfs_toggle);
+  SysfsUtils::SetInt("/sys/class/leds/led-sys/brightness", sysfs_toggle);
+  std::string cpu_governor = "powersave";
+  if (m_bVeroStandby)
+        cpu_governor = "ondemand";
+  CLog::Log(LOGINFO, "CApplication::ToggleStandby -- governor will now be %s", cpu_governor.c_str());
+  for (int i = 0; i < 4; i++) {
+	std::stringstream ss_govpath;
+	ss_govpath << "/sys/devices/system/cpu/cpu" << i << "/cpufreq/scaling_governor";
+	SysfsUtils::SetString(ss_govpath.str(), cpu_governor);
+  }
+  std::string hpdlock = "hpd_lock1";
+  if (m_bVeroStandby && ! CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_LOCKHPD))
+	hpdlock = "hpd_lock0";
+  CLog::Log(LOGINFO, "CApplication::ToggleStandby -- HPD locking will now be %s", hpdlock.c_str());
+  SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/debug", hpdlock);
+  if (m_bVeroStandby)
+	CApplicationMessenger::GetInstance().PostMsg(TMSG_CECACTIVATESOURCE); // wake cec
+
+  std::string strStandbyScript;
+  if (m_bVeroStandby)
+	strStandbyScript = CSpecialProtocol::TranslatePath("special://profile/wake.py");
+  else
+	strStandbyScript = CSpecialProtocol::TranslatePath("special://profile/standby.py");
+  CLog::Log(LOGNOTICE, "CApplication::ToggleStandby -- checking for existence of %s", strStandbyScript.c_str());
+
+  if (XFILE::CFile::Exists(strStandbyScript)) {
+    CLog::Log(LOGNOTICE, "CApplication::ToggleStandby -- script %s found", strStandbyScript.c_str());
+    CScriptInvocationManager::GetInstance().ExecuteAsync(strStandbyScript);
+  }
+
+  m_bVeroStandby = ! m_bVeroStandby; //invert state
+  m_screensaverActive = m_bVeroStandby;
+  return;
+}
+
 // activate the screensaver.
 // if forceType is true, we ignore the various conditions that can alter
 // the type of screensaver displayed
@@ -3725,7 +3824,7 @@ bool CApplication::OnMessage(CGUIMessage& message)
         if (m_itemCurrentFile->IsOnDVD())
           StopPlaying();
       }
-      else if (message.GetParam1() == GUI_MSG_UI_READY)
+      else if (message.GetParam1() == GUI_MSG_UI_READY || message.GetParam1() == GUI_MSG_UI_READY_PROFILE)
       {
         // remove splash window
         CServiceBroker::GetGUI()->GetWindowManager().Delete(WINDOW_SPLASH);
@@ -3746,6 +3845,12 @@ bool CApplication::OnMessage(CGUIMessage& message)
         ShowAppMigrationMessage();
 
         m_bInitializing = false;
+
+        if (message.GetParam1() == GUI_MSG_UI_READY_PROFILE) {
+          g_application.SetOSMCWalkthroughState(g_application.OSMC_WALKTHROUGH_ISDONE);
+          g_application.ReloadSkin(false);
+        }
+
       }
       else if (message.GetParam1() == GUI_MSG_UPDATE_ITEM && message.GetItem())
       {

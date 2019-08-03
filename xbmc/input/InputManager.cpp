@@ -526,7 +526,7 @@ bool CInputManager::HandleKey(const CKey& key)
   g_application.ResetScreenSaver();
 
   // allow some keys to be processed while the screensaver is active
-  if (g_application.WakeUpScreenSaverAndDPMS(processKey) && !processKey)
+  if (!processKey && g_application.WakeUpScreenSaverAndDPMS(processKey))
   {
     CLog::LogF(LOGDEBUG, "%s pressed, screen saver/dpms woken up", m_Keyboard.GetKeyName((int)key.GetButtonCode()).c_str());
     return true;
@@ -667,7 +667,10 @@ bool CInputManager::AlwaysProcess(const CAction& action)
         || builtInFunction == "suspend"
         || builtInFunction == "hibernate"
         || builtInFunction == "quit"
-        || builtInFunction == "shutdown")
+        || builtInFunction == "shutdown"
+        || builtInFunction == "volumeup"
+        || builtInFunction == "volumedown"
+        || builtInFunction == "mute")
     {
       return true;
     }

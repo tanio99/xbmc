@@ -32,10 +32,19 @@
 #include "utils/SysfsUtils.h"
 #include "threads/SingleLock.h"
 
+#include "messaging/ApplicationMessenger.h"
+
 #include <linux/fb.h>
 
 #include <EGL/egl.h>
 
+#include <libudev.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <locale.h>
+#include <unistd.h>
+
+using namespace KODI::MESSAGING;
 using namespace KODI;
 
 CWinSystemAmlogic::CWinSystemAmlogic() :
@@ -64,6 +73,50 @@ CWinSystemAmlogic::CWinSystemAmlogic() :
   aml_permissions();
   aml_disable_freeScale();
 
+ /* Take in to account custom OSMC parameters */
+  if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_FORCERGB)) {
+    CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic::Initialize -- forcing RGB");
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/output_rgb", "1");
+ }
+
+  int range_control;
+  SysfsUtils::GetInt("/sys/module/am_vecm/parameters/range_control", range_control);
+  if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGEAML))
+    range_control &= 1;
+  else
+    range_control |= 2;
+  CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic::Initialize -- setting quantization range to %s",
+      range_control & 2 ? "full" : "limited");
+  SysfsUtils::SetInt("/sys/module/am_vecm/parameters/range_control", range_control);
+
+ if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_LOCKHPD)) {
+    CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic::Initialize -- forcing HPD to be locked");
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/debug", "hpd_lock1");
+ }
+
+ std::string attr = "";
+ SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/attr", attr);
+
+ if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_FORCE422)) {
+   if (attr.find("444") != std::string::npos ||
+       attr.find("422") != std::string::npos ||
+       attr.find("420") != std::string::npos)
+     attr.replace(attr.find("4"),3,"422").append("now");
+   else
+     attr.append("422now");
+ }
+ else {
+   if (attr.find("422") != std::string::npos)
+     attr.erase(attr.find("4"),3);
+   attr.append("now");
+ }
+ CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic::Initialize -- setting 422 output, attr = %s", attr.c_str());
+ SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/attr", attr.c_str());
+
+ SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/rawedid", m_lastEdid);
+
+ StartMonitorHWEvent();
+
   // Register sink
   AE::CAESinkFactory::ClearSinks();
   CAESinkALSA::Register();
@@ -74,10 +127,89 @@ CWinSystemAmlogic::CWinSystemAmlogic() :
 
 CWinSystemAmlogic::~CWinSystemAmlogic()
 {
+  StopMonitorHWEvent();
+
   if(m_nativeWindow)
   {
     m_nativeWindow = static_cast<EGLNativeWindowType>(NULL);
   }
+}
+
+void hwMon(CWinSystemAmlogic *instance) {
+
+        struct udev *udev;
+        struct udev_enumerate *enumerate;
+        struct udev_list_entry *devices, *dev_list_entry;
+        struct udev_device *dev;
+
+        struct udev_monitor *mon;
+        int fd;
+
+        /* Create the udev object */
+        udev = udev_new();
+        if (!udev) {
+                return;
+        }
+
+        mon = udev_monitor_new_from_netlink(udev, "udev");
+        udev_monitor_filter_add_match_subsystem_devtype(mon, "switch", NULL);
+
+        udev_monitor_enable_receiving(mon);
+        fd = udev_monitor_get_fd(mon);
+
+        /* Poll for events */
+
+        while (1 && instance->m_monitorEvents) {
+
+                fd_set fds;
+                struct timeval tv;
+                int ret;
+
+                FD_ZERO(&fds);
+                FD_SET(fd, &fds);
+                tv.tv_sec = 0;
+                tv.tv_usec = 0;
+
+                ret = select(fd+1, &fds, NULL, NULL, &tv);
+
+                /* Check if FD has received data */
+
+                if (ret > 0 && FD_ISSET(fd, &fds)) {
+
+                        dev = udev_monitor_receive_device(mon);
+                        if (dev) {
+                                CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic: Detected HDMI switch");
+                                int state;
+                                SysfsUtils::GetInt("/sys/class/amhdmitx/amhdmitx0/hpd_state", state);
+				std::string newEdid;
+				SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/rawedid", newEdid);
+
+                                if (state && newEdid != instance->m_lastEdid) {
+                                    CApplicationMessenger::GetInstance().PostMsg(TMSG_AML_RESIZE);
+				    instance->m_lastEdid = newEdid;
+				}
+                                udev_device_unref(dev);
+                        }
+                        else {
+                                CLog::Log(LOGERROR, "CEGLNativeTypeAmlogic: can't get device from receive_device");
+                        }
+                }
+                usleep(250*1000);
+        }
+}
+
+void CWinSystemAmlogic::StartMonitorHWEvent() {
+    CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic::StartMonitorHWEvent -- starting event monitor for HDMI hotplug events");
+    m_monitorEvents = true;
+    m_monitorThread = std::thread(hwMon, this);
+    return;
+}
+
+void CWinSystemAmlogic::StopMonitorHWEvent() {
+    CLog::Log(LOGDEBUG, "CEGLNativeTypeAmlogic::StopMonitorHWEvent -- stopping event monitor for HDMI hotplug events");
+    m_monitorEvents = false;
+    m_monitorThread.join();
+    return;
 }
 
 bool CWinSystemAmlogic::InitWindowSystem()
@@ -172,11 +304,32 @@ bool CWinSystemAmlogic::DestroyWindow()
   return true;
 }
 
+static std::string ModeFlagsToString(unsigned int flags, bool identifier)
+{
+  std::string res;
+  if(flags & D3DPRESENTFLAG_INTERLACED)
+    res += "i";
+  else
+    res += "p";
+
+  if(!identifier)
+    res += " ";
+
+  if(flags & D3DPRESENTFLAG_MODE3DSBS)
+    res += "sbs";
+  else if(flags & D3DPRESENTFLAG_MODE3DTB)
+    res += "tab";
+  else if(identifier)
+    res += "std";
+  return res;
+}
+
 void CWinSystemAmlogic::UpdateResolutions()
 {
   CWinSystemBase::UpdateResolutions();
 
   RESOLUTION_INFO resDesktop, curDisplay;
+  std::string curDesktopSetting, curResolution, newRes;
   std::vector<RESOLUTION_INFO> resolutions;
 
   if (!aml_probe_resolutions(resolutions) || resolutions.empty())
@@ -192,8 +345,25 @@ void CWinSystemAmlogic::UpdateResolutions()
     resDesktop = curDisplay;
   }
 
+  curDesktopSetting = CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(CSettings::SETTING_VIDEOSCREEN_SCREENMODE);
+
+  curResolution = StringUtils::Format("%05i%05i%09.5f%s",
+      resDesktop.iScreenWidth, resDesktop.iScreenHeight, resDesktop.fRefreshRate,
+      ModeFlagsToString(resDesktop.dwFlags, true).c_str());
+
+  if (curDesktopSetting == "DESKTOP")
+    curDesktopSetting = curResolution;
+  else if (curDesktopSetting.length() == 24)
+    curDesktopSetting = StringUtils::Right(curDesktopSetting, 23);
+
+  CLog::Log(LOGNOTICE, "Current display setting is %s", curDesktopSetting.c_str());
+  CLog::Log(LOGNOTICE, "Current output resolution is %s", curResolution.c_str());
+
   RESOLUTION ResDesktop = RES_INVALID;
   RESOLUTION res_index  = RES_DESKTOP;
+  bool resExactMatch = false;
+  std::string ResString;
+  std::string ResFallback = "00480024.00000istd";
 
   for (size_t i = 0; i < resolutions.size(); i++)
   {
@@ -216,14 +386,24 @@ void CWinSystemAmlogic::UpdateResolutions()
       resolutions[i].dwFlags & D3DPRESENTFLAG_INTERLACED ? "i" : "",
       resolutions[i].fRefreshRate);
 
-    if(resDesktop.iWidth == resolutions[i].iWidth &&
-       resDesktop.iHeight == resolutions[i].iHeight &&
-       resDesktop.iScreenWidth == resolutions[i].iScreenWidth &&
-       resDesktop.iScreenHeight == resolutions[i].iScreenHeight &&
-       (resDesktop.dwFlags & D3DPRESENTFLAG_MODEMASK) == (resolutions[i].dwFlags & D3DPRESENTFLAG_MODEMASK) &&
-       fabs(resDesktop.fRefreshRate - resolutions[i].fRefreshRate) < FLT_EPSILON)
+    ResString = StringUtils::Format("%05i%05i%09.5f%s",
+          resolutions[i].iScreenWidth, resolutions[i].iScreenHeight, resolutions[i].fRefreshRate,
+          ModeFlagsToString(resolutions[i].dwFlags, true).c_str());
+    if (curDesktopSetting == ResString){
+      ResDesktop = res_index;
+      resExactMatch = true;
+      newRes = ResString;
+      CLog::Log(LOGNOTICE, "Current resolution setting found at 16 + %d", i);
+    }
+
+    /* fall back to the highest resolution available but not more than current desktop */
+    if(curDesktopSetting.substr(5,18).compare(ResString.substr(5,18)) >= 0 &&
+        ResString.substr(5,18).compare(ResFallback) > 0 && ! resExactMatch)
     {
       ResDesktop = res_index;
+      ResFallback = ResString.substr(5,18);
+      newRes = ResString;
+      CLog::Log(LOGNOTICE, "Fallback resolution at 16 + %d %s", i, ResFallback.c_str());
     }
 
     res_index = (RESOLUTION)((int)res_index + 1);
@@ -232,10 +412,7 @@ void CWinSystemAmlogic::UpdateResolutions()
   // set RES_DESKTOP
   if (ResDesktop != RES_INVALID)
   {
-    CLog::Log(LOGNOTICE, "Found (%dx%d%s@%f) at %d, setting to RES_DESKTOP at %d",
-      resDesktop.iWidth, resDesktop.iHeight,
-      resDesktop.dwFlags & D3DPRESENTFLAG_INTERLACED ? "i" : "",
-      resDesktop.fRefreshRate,
+    CLog::Log(LOGNOTICE, "Found best resolution %s at %d, setting to RES_DESKTOP at %d", newRes,
       (int)ResDesktop, (int)RES_DESKTOP);
 
     CDisplaySettings::GetInstance().GetResolutionInfo(RES_DESKTOP) = CDisplaySettings::GetInstance().GetResolutionInfo(ResDesktop);

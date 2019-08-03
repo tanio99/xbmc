@@ -26,6 +26,7 @@
 #include "platform/linux/XTimeUtils.h"
 #endif
 #include "utils/StringUtils.h"
+#include "Application.h"
 
 using namespace KODI::MESSAGING;
 
@@ -283,6 +284,10 @@ void CNetworkBase::NetworkMessage(EMESSAGE message, int param)
 
 bool CNetworkBase::WakeOnLan(const char* mac)
 {
+  /* Don't do this in standby */
+  if (g_application.IsVeroStandby())
+	return true;
+
   int i, j, packet;
   unsigned char ethaddr[8];
   unsigned char buf [128];
@@ -513,9 +518,9 @@ std::vector<SOCKET> CreateTCPServerSocket(const int port, const bool bindLocal, 
 
 void CNetworkBase::WaitForNet()
 {
-  const int timeout = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_POWERMANAGEMENT_WAITFORNETWORK);
+  int timeout = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_POWERMANAGEMENT_WAITFORNETWORK);
   if (timeout <= 0)
-    return; // wait for network is disabled
+    timeout = 1;
 
   // check if we have at least one network interface to wait for
   if (!IsAvailable())

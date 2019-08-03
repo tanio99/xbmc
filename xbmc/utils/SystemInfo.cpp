@@ -627,6 +627,8 @@ std::string CSysInfo::GetOsName(bool emptyIfUnknown /* = false*/)
   if (emptyIfUnknown && osName == "Unknown OS")
     return "";
 
+osName = "Linux";
+
   return osName;
 }
 
@@ -1238,7 +1240,7 @@ std::string CSysInfo::GetVersionShort()
 
 std::string CSysInfo::GetVersion()
 {
-  return GetVersionShort() + " Git:" + CCompileInfo::GetSCMID();
+  return GetVersionShort();
 }
 
 std::string CSysInfo::GetBuildDate()

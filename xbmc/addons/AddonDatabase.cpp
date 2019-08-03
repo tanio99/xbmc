@@ -361,6 +361,17 @@ void CAddonDatabase::SyncInstalled(const std::set<std::string>& ids,
           ORIGIN_SYSTEM, id.c_str()));
     }
 
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID LIKE 'script.module.osmcsetting.%%'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='script.module.osmccommon'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='script.module.xmltodict'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='script.module.elementtree'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='service.osmc.settings'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='skin.osmc'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='service.osmc.BTPlayer'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID == 'inputstream.adaptive'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID == 'inputstream.rtmp'"));
+    m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID LIKE 'resource.language.%%'"));
+
     CommitTransaction();
   }
   catch (...)

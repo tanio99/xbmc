@@ -47,6 +47,7 @@
 extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 }
 
 
@@ -445,6 +446,11 @@ bool CDVDDemuxFFmpeg::Open(std::shared_ptr<CDVDInputStream> pInput, bool streami
   }
   else if (!iformat || (strcmp(iformat->name, "mpegts") != 0))
   {
+    if (m_streaminfo == false) {
+	av_opt_set_int(m_pFormatContext, "analyzeduration", 500000, 0);
+	m_checkvideo = true;
+	skipCreateStreams = true;
+    }
     m_streaminfo = true;
   }
 
@@ -966,7 +972,7 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
           {
             if(m_pkt.pkt.stream_index == (int)m_pFormatContext->programs[m_program]->stream_index[i])
             {
-              pPacket = CDVDDemuxUtils::AllocateDemuxPacket(m_pkt.pkt.size);
+              pPacket = CDVDDemuxUtils::AllocateDemuxPacket(0);
               break;
             }
           }
@@ -975,7 +981,7 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
             bReturnEmpty = true;
         }
         else
-          pPacket = CDVDDemuxUtils::AllocateDemuxPacket(m_pkt.pkt.size);
+          pPacket = CDVDDemuxUtils::AllocateDemuxPacket(0);
       }
       else
         bReturnEmpty = true;
@@ -992,9 +998,13 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
         // copy contents into our own packet
         pPacket->iSize = m_pkt.pkt.size;
 
-        // maybe we can avoid a memcpy here by detecting where pkt.destruct is pointing too?
         if (m_pkt.pkt.data)
-          memcpy(pPacket->pData, m_pkt.pkt.data, pPacket->iSize);
+        {
+          pPacket->pData = m_pkt.pkt.data;
+          // so we can free AVPacket when DemuxPacket is freed
+          pPacket->pkt = new AVPacket(m_pkt.pkt);
+        }
+
 
         pPacket->pts = ConvertTimestamp(m_pkt.pkt.pts, stream->time_base.den, stream->time_base.num);
         pPacket->dts = ConvertTimestamp(m_pkt.pkt.dts, stream->time_base.den, stream->time_base.num);
@@ -1030,7 +1040,10 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
         pPacket->iStreamId = m_pkt.pkt.stream_index;
       }
       m_pkt.result = -1;
-      av_packet_unref(&m_pkt.pkt);
+      if (pPacket && pPacket->pkt)
+        memset(&m_pkt.pkt, 0, sizeof(AVPacket));
+      else
+        av_packet_unref(&m_pkt.pkt);
     }
   }
   } // end of lock scope
@@ -1482,15 +1495,24 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
         if (pStream->codecpar->height)
           st->fAspect *= (double)pStream->codecpar->width / pStream->codecpar->height;
         st->iOrientation = 0;
-        st->iBitsPerPixel = pStream->codecpar->bits_per_coded_sample;
         st->iBitRate = static_cast<int>(pStream->codecpar->bit_rate);
 
-        AVDictionaryEntry *rtag = av_dict_get(pStream->metadata, "rotate", NULL, 0);
-        if (rtag)
-          st->iOrientation = atoi(rtag->value);
+          st->iBitsPerPixel = pStream->codec->bits_per_raw_sample;
+          if (st->iBitsPerPixel == 0){
+            if (pStream->codec->color_trc == AVCOL_TRC_BT2020_12)
+              st->iBitsPerPixel = 12;
+            else if (pStream->codec->color_trc >= AVCOL_TRC_BT2020_10)
+              /* assume all 10-bit until 12-bit gets common */
+              st->iBitsPerPixel = 10;
+            else
+              st->iBitsPerPixel = 8;
+          }
+          AVDictionaryEntry *rtag = av_dict_get(pStream->metadata, "rotate", NULL, 0);
+          if (rtag) 
+            st->iOrientation = atoi(rtag->value);
 
-        // detect stereoscopic mode
-        std::string stereoMode = GetStereoModeFromMetadata(pStream->metadata);
+          // detect stereoscopic mode
+          std::string stereoMode = GetStereoModeFromMetadata(pStream->metadata);
           // check for metadata in file if detection in stream failed
         if (stereoMode.empty())
           stereoMode = GetStereoModeFromMetadata(m_pFormatContext->metadata);

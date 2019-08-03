@@ -117,6 +117,7 @@ bool CDVDVideoCodecAmlogic::Open(CDVDStreamInfo &hints, CDVDCodecOptions &option
   m_opened = false;
 
   m_hints = hints;
+  m_hints.pClock = hints.pClock;
 
   CLog::Log(LOGDEBUG, "CDVDVideoCodecAmlogic::Opening: codec %d profile:%d extra_size:%d", m_hints.codec, hints.profile, hints.extrasize);
 
@@ -392,6 +393,12 @@ CDVDVideoCodec::VCReturn CDVDVideoCodecAmlogic::GetPicture(VideoPicture* pVideoP
 
   pVideoPicture->iDisplayWidth  = pVideoPicture->iWidth;
   pVideoPicture->iDisplayHeight = pVideoPicture->iHeight;
+
+  //set default if there is no other information for TV/DVD modes
+  if (pVideoPicture->iWidth > 0 && pVideoPicture->iWidth != 640 &&
+      pVideoPicture->iWidth <= 720 && m_aspect_ratio < 0.1f)
+      m_aspect_ratio = 16.0f / 9.0f;
+
   if (m_aspect_ratio > 1.0 && !m_hints.forced_aspect)
   {
     pVideoPicture->iDisplayWidth  = ((int)lrint(pVideoPicture->iHeight * m_aspect_ratio)) & ~3;

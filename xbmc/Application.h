@@ -157,6 +157,18 @@ public:
 
   bool IsCurrentThread() const;
   void Stop(int exitCode);
+
+  // osmc signals
+
+  typedef enum
+  {
+       OSMC_WALKTHROUGH_NOTRUNNING = 0,
+       OSMC_WALKTHROUGH_ISRUNNING = 1,
+       OSMC_WALKTHROUGH_ISDONE = 2,
+  } OSMCWalkthroughState;
+  OSMCWalkthroughState m_eOSMCWalkthroughState;
+  void SetOSMCWalkthroughState(OSMCWalkthroughState state);
+
   void UnloadSkin(bool forReload = false);
   bool LoadCustomWindows();
   void ReloadSkin(bool confirm = false);
@@ -203,6 +215,8 @@ public:
   // Checks whether the screensaver and / or DPMS should become active.
   void CheckScreenSaverAndDPMS();
   void ActivateScreenSaver(bool forceType = false);
+  void ActivateScreenSaverStandby();
+  void ToggleStandby();
   void CloseNetworkShares();
 
   void ShowAppMigrationMessage();
@@ -327,6 +341,9 @@ public:
 
   void SetLoggingIn(bool switchingProfiles);
 
+  /*! \Ensure that we only handle one request to reload the skin at once */
+  bool m_SkinReloading;
+
   /*!
    \brief Register an action listener.
    \param listener The listener to register
@@ -340,6 +357,11 @@ public:
 
   std::unique_ptr<CServiceManager> m_ServiceManager;
 
+  /*! \Allow OSMC's sigterm handler to know when to do the business or not, otherwise we get code on EXIT and POWERDOWN/REBOOT paths
++  */
+  bool m_ShuttingDown;
+  bool isShuttingDown() { return m_ShuttingDown; }
+
   /*!
   \brief Locks calls from outside kodi (e.g. python) until framemove is processed.
   */
@@ -351,6 +373,8 @@ public:
   void UnlockFrameMoveGuard();
 
   void SetRenderGUI(bool renderGUI);
+
+  bool IsVeroStandby() const { return m_bVeroStandby; }
 
 protected:
   bool OnSettingsSaving() const override;
@@ -398,6 +422,7 @@ protected:
 #endif
   // screensaver
   bool m_screensaverActive = false;
+  bool m_bVeroStandby;
   std::string m_screensaverIdInUse;
   ADDON::AddonPtr m_pythonScreenSaver; // @warning: Fallback for Python interface, for binaries not needed!
   // OS screen saver inhibitor that is always active if user selected a Kodi screen saver

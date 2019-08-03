@@ -208,6 +208,11 @@ void CRepositoryUpdater::ScheduleUpdate()
   if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_ADDONS_AUTOUPDATES) == AUTO_UPDATES_NEVER)
     return;
 
+  if (g_application.m_eOSMCWalkthroughState != 2) {
+       CLog::Log(LOGDEBUG, "CRepositoryUpdater: refusing to update until My OSMC asserts");
+       return;
+  }
+
   if (!m_addonMgr.HasAddons(ADDON_REPOSITORY))
     return;
 

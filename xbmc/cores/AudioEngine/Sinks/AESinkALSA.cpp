@@ -23,10 +23,13 @@
 #include "utils/MathUtils.h"
 #include "utils/SystemInfo.h"
 #include "threads/SingleLock.h"
+#include "settings/Settings.h"
+#include "ServiceBroker.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/SettingsComponent.h"
 #if defined(HAS_LIBAMCODEC)
 #include "utils/AMLUtils.h"
+#include "utils/SysfsUtils.h"
 #endif
 
 #ifdef TARGET_POSIX
@@ -72,6 +75,23 @@ static unsigned int ALSASampleRateList[] =
   384000,
   0
 };
+
+static int CheckNP2(unsigned x)
+{
+    unsigned orig = x;
+    --x;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    ++x;
+    if (x == orig) return x;
+    else return x >> 1;
+}
+
+
+int speaker_layout = 0;
 
 CAESinkALSA::CAESinkALSA() :
   m_pcm(NULL)
@@ -218,9 +238,10 @@ inline CAEChannelInfo CAESinkALSA::GetChannelLayout(const AEAudioFormat& format,
     }
   }
 
+
   CLog::Log(LOGDEBUG, "CAESinkALSA::GetChannelLayout - Input Channel Count: %d Output Channel Count: %d", format.m_channelLayout.Count(), info.Count());
   CLog::Log(LOGDEBUG, "CAESinkALSA::GetChannelLayout - Requested Layout: %s", std::string(format.m_channelLayout).c_str());
-  CLog::Log(LOGDEBUG, "CAESinkALSA::GetChannelLayout - Got Layout: %s (ALSA: %s)", std::string(info).c_str(), alsaMapStr.c_str());
+  CLog::Log(LOGDEBUG, "CAESinkALSA::GetChannelLayout - Got Layout: %s (ALSA: %s) (CEA: %d)", std::string(info).c_str(), alsaMapStr.c_str(), speaker_layout);
 
   return info;
 }
@@ -484,6 +505,8 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
   inconfig.format = format.m_dataFormat;
   inconfig.sampleRate = format.m_sampleRate;
 
+    CLog::Log(LOGINFO, "CAESinkALSA::Initialize - Requested layout: %s", std::string(format.m_channelLayout).c_str());
+
   /*
    * We can't use the better GetChannelLayout() at this point as the device
    * is not opened yet, and we need inconfig.channels to select the correct
@@ -502,12 +525,44 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
   {
     m_passthrough   = false;
   }
-#if defined(HAS_LIBAMCODEC)
-  if (aml_present())
-  {
+
+    int aml_digital_codec = 0;
+
+    if (m_passthrough)
+    {
+      switch(format.m_streamInfo.m_type)
+      {
+        case CAEStreamInfo::STREAM_TYPE_AC3:
+          aml_digital_codec = 2;
+          break;
+
+        case CAEStreamInfo::STREAM_TYPE_DTS_512:
+        case CAEStreamInfo::STREAM_TYPE_DTS_1024:
+        case CAEStreamInfo::STREAM_TYPE_DTS_2048:
+        case CAEStreamInfo::STREAM_TYPE_DTSHD_CORE:
+          aml_digital_codec = 3;
+          break;
+        case CAEStreamInfo::STREAM_TYPE_DTSHD:
+          aml_digital_codec = 5;
+          break;
+        case CAEStreamInfo::STREAM_TYPE_DTSHD_MA:
+          aml_digital_codec = 8;
+          break;
+
+        case CAEStreamInfo::STREAM_TYPE_EAC3:
+          aml_digital_codec = 4;
+          break;
+        case CAEStreamInfo::STREAM_TYPE_TRUEHD:
+          aml_digital_codec = 7;
+          break;
+      }
+    }
+    else if (device.find("M8AUDIO") != std::string::npos)
+        device = "@:CARD=AMLM8AUDIO,DEV=0";
+
     aml_set_audio_passthrough(m_passthrough);
-  }
-#endif
+    SysfsUtils::SetInt("/sys/class/audiodsp/digital_codec", aml_digital_codec);
+    CLog::Log(LOGINFO, "CAESinkALSA::Initialize - set digital_codec %d", aml_digital_codec);
 
   if (inconfig.channels == 0)
   {
@@ -515,7 +570,16 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
     return false;
   }
 
-  AEDeviceType devType = AEDeviceTypeFromName(device);
+ if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOSCREEN_MUTEHDMI)) {
+    CLog::Log(LOGDEBUG, "CAESinkALSA::Initialize -- muting HDMI");
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/config", "audio_off");
+ }
+ else {
+    CLog::Log(LOGDEBUG, "CAESinkALSA::Initialize -- unmuting HDMI");
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/config", "audio_on");
+ }
+
+ AEDeviceType devType = AEDeviceTypeFromName(device);
 
   std::string AESParams;
   /* digital interfaces should have AESx set, though in practice most
@@ -564,10 +628,45 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
 
   if (selectedChmap)
   {
+	  /* Channel layout should match one of those offered by the sink
+	   * Find out which one it is
+	   */
+
+	  snd_pcm_chmap_query_t** supportedMaps;
+	  supportedMaps = snd_pcm_query_chmaps(m_pcm);
+	  /* set default stereo */
+      SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", 0);
+      int i = 0;
+	  for (snd_pcm_chmap_query_t* supportedMap = supportedMaps[i++];
+			  supportedMap; supportedMap = supportedMaps[i++])
+	  {
+		  if (ALSAchmapToString(&supportedMap->map) == ALSAchmapToString(selectedChmap)) {
+			  speaker_layout = --i;
+			  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", speaker_layout);
+			  break;
+		  }
+	  }
+
     /* failure is OK, that likely just means the selected chmap is fixed already */
     snd_pcm_set_chmap(m_pcm, selectedChmap);
     free(selectedChmap);
   }
+  else
+  {
+	  /* while i2s driver is broken, this is essential */
+	  if (outconfig.channels == 2 || m_passthrough)
+	  {
+		  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", 0);
+  		CLog::Log(LOGINFO, "CAESinkALSA::Initialize - setting default aud_ch to 0");
+	  }
+	  else
+	  {
+		SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", 19);
+   		CLog::Log(LOGINFO, "CAESinkALSA::Initialize - setting default aud_ch to 19");
+	  }
+
+  }
+
 
   // we want it blocking
   snd_pcm_nonblock(m_pcm, 0);
@@ -729,12 +828,18 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
   */
   periodSize  = std::min(periodSize, (snd_pcm_uframes_t) sampleRate / 20);
   bufferSize  = std::min(bufferSize, (snd_pcm_uframes_t) sampleRate / 5);
+#if defined(HAS_LIBAMCODEC)
+  bufferSize  = CheckNP2(bufferSize);
+#endif;
 
   /*
    According to upstream we should set buffer size first - so make sure it is always at least
    4x period size to not get underruns (some systems seem to have issues with only 2 periods)
   */
   periodSize = std::min(periodSize, bufferSize / 4);
+#if defined(HAS_LIBAMCODEC)
+  periodSize  = CheckNP2(periodSize);
+#endif
 
   CLog::Log(LOGDEBUG, "CAESinkALSA::InitializeHW - Request: periodSize %lu, bufferSize %lu", periodSize, bufferSize);
 
@@ -860,7 +965,7 @@ void CAESinkALSA::Stop()
 {
   if (!m_pcm)
     return;
-  snd_pcm_drop(m_pcm);
+  snd_pcm_drain(m_pcm);
 }
 
 void CAESinkALSA::GetDelay(AEDelayStatus& status)
@@ -1554,6 +1659,11 @@ void CAESinkALSA::EnumerateDevice(AEDeviceInfoList &list, const std::string &dev
       info.m_dataFormats.push_back(i);
   }
 
+  if (info.m_displayName.find("M8AUDIO") != std::string::npos && info.m_deviceType != AE_DEVTYPE_HDMI)
+  {
+    info.m_displayNameExtra = "PCM";
+  }
+
   if (info.m_deviceType == AE_DEVTYPE_HDMI)
   {
     // we don't trust ELD information and push back our supported formats explicitly
@@ -1573,6 +1683,8 @@ void CAESinkALSA::EnumerateDevice(AEDeviceInfoList &list, const std::string &dev
 
   snd_pcm_close(pcmhandle);
   info.m_wantsIECPassthrough = true;
+  if (info.m_displayName == "PulseAudio Sound Server")
+        info.m_displayName.replace(info.m_displayName.begin(), info.m_displayName.end(), "OSMC streaming to Bluetooth speaker / headphones");
   list.push_back(info);
 }
 

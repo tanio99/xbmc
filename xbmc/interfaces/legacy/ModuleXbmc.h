@@ -210,6 +210,118 @@ namespace XBMCAddon
 #ifdef DOXYGEN_SHOULD_USE_THIS
     ///
     /// \ingroup python_xbmc
+    /// @brief \python_func{ xbmc.setosmcwalkthroughstatus(state) }
+    ///-----------------------------------------------------------------------
+    /// Change the OSMC Walkthrough Status
+    ///
+    /// @param          state       int - state of the walkthrough progress
+    ///
+    ///
+    ///
+    /// List of commands -
+    ///
+    ///
+    /// ------------------------------------------------------------------------
+    ///
+    /// **Example:**
+    /// ~~~~~~~~~~~~~{.py}
+    /// ..
+    /// xbmc.setosmcwalkthroughstatus(1)
+    /// ..
+    /// ~~~~~~~~~~~~~
+    ///
+    setosmcwalkthroughstatus(...);
+#else
+    void setosmcwalkthroughstatus(int state);
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+    ///
+    /// \ingroup python_xbmc
+    /// @brief \python_func{ xbmc.setskin(skinname) }
+    ///-----------------------------------------------------------------------
+    /// Change the XBMC skin
+    ///
+    /// @param          state       string - the name of the skin to change to
+    ///
+    ///
+    ///
+    /// List of commands -
+    ///
+    ///
+    /// ------------------------------------------------------------------------
+    ///
+    /// **Example:**
+    /// ~~~~~~~~~~~~~{.py}
+    /// ..
+    /// xbmc.setskin("skin.confluence")
+    /// ..
+    /// ~~~~~~~~~~~~~
+    ///
+    setskin(...);
+#else
+    void setskin(const char *skin);
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+    ///
+    /// \ingroup python_xbmc
+    /// @brief \python_func{ xbmc.sethostname(hostname) }
+    ///-----------------------------------------------------------------------
+    /// Change the XBMC skin
+    ///
+    /// @param          state       string - Change the device name, and in turn, hostname
+    ///
+    ///
+    ///
+    /// List of commands -
+    ///
+    ///
+    /// ------------------------------------------------------------------------
+    ///
+    /// **Example:**
+    /// ~~~~~~~~~~~~~{.py}
+    /// ..
+    /// xbmc.sethostname("osmc")
+    /// ..
+    /// ~~~~~~~~~~~~~
+    ///
+    sethostname(...);
+#else
+    void sethostname(const char *hostname);
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+    ///
+    /// \ingroup python_xbmc
+    /// @brief \python_func{ xbmc.settimezone(timezone) }
+    ///-----------------------------------------------------------------------
+    /// Change the timezone
+    ///
+    /// @param          state       string - the name of the timezone to change to
+    ///
+    ///
+    ///
+    /// List of commands -
+    ///
+    ///
+    /// ------------------------------------------------------------------------
+    ///
+    /// **Example:**
+    /// ~~~~~~~~~~~~~{.py}
+    /// ..
+    /// xbmc.settimezone("Europe/London")
+    /// ..
+    /// ~~~~~~~~~~~~~
+    ///
+    settimezone(...);
+#else
+    void settimezone(const char *timezone);
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+    ///
+    /// \ingroup python_xbmc
     /// @brief \python_func{ xbmc.sleep(time) }
     ///-----------------------------------------------------------------------
     /// Sleeps for 'time' msec.
@@ -908,6 +1020,27 @@ namespace XBMCAddon
     audioResume();
 #else
     void audioResume();
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+    ///
+    /// \ingroup python_xbmc
+    /// @brief \python_func{ xbmc.saveSettings() }
+    ///-----------------------------------------------------------------------
+    /// Save Kodi settings.
+    ///
+    ///
+    /// ------------------------------------------------------------------------
+    ///
+    /// **Example:**
+    /// ~~~~~~~~~~~~~{.py}
+    /// ..
+    /// xbmc.saveSettings()
+    /// ..
+    /// ~~~~~~~~~~~~~
+    ///
+#else
+    void saveSettings();
 #endif
 
 #ifdef DOXYGEN_SHOULD_USE_THIS

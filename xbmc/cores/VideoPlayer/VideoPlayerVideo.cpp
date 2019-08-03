@@ -23,6 +23,7 @@
 #include <numeric>
 #include <iterator>
 #include "utils/log.h"
+#include <chrono>
 
 class CDVDMsgVideoCodecChange : public CDVDMsg
 {
@@ -116,7 +117,8 @@ bool CVideoPlayerVideo::OpenStream(CDVDStreamInfo hint)
       return false;
   }
 
-  CLog::Log(LOGNOTICE, "Creating video codec with codec id: %i", hint.codec);
+  CLog::Log(LOGNOTICE, "CVideoPlayerVideo::%s - Creating codec: %i",__FUNCTION__,  hint.codec);
+  hint.pClock = m_pClock;
 
   if (m_messageQueue.IsInited())
   {
@@ -200,7 +202,8 @@ void CVideoPlayerVideo::OpenStream(CDVDStreamInfo &hint, CDVDVideoCodec* codec)
   }
   if (!codec)
   {
-    CLog::Log(LOGNOTICE, "Creating video codec with codec id: %i", hint.codec);
+    CLog::Log(LOGNOTICE, "CVideoPlayerVideo::%s - Creating Codec: %i",__FUNCTION__,  hint.codec);
+    hint.pClock = m_pClock;
     hint.codecOptions |= CODEC_ALLOW_FALLBACK;
     codec = CDVDFactoryCodec::CreateVideoCodec(hint, m_processInfo);
     if (!codec)
@@ -272,25 +275,25 @@ bool CVideoPlayerVideo::IsInited() const
 inline void CVideoPlayerVideo::SendMessage(CDVDMsg* pMsg, int priority)
 {
   m_messageQueue.Put(pMsg, priority);
-  m_processInfo.SetLevelVQ(m_messageQueue.GetLevel());
+  SetLevel();
 }
 
 inline void CVideoPlayerVideo::SendMessageBack(CDVDMsg* pMsg, int priority)
 {
   m_messageQueue.PutBack(pMsg, priority);
-  m_processInfo.SetLevelVQ(m_messageQueue.GetLevel());
+  SetLevel();
 }
 
 inline void CVideoPlayerVideo::FlushMessages()
 {
   m_messageQueue.Flush();
-  m_processInfo.SetLevelVQ(m_messageQueue.GetLevel());
+  SetLevel();
 }
 
 inline MsgQueueReturnCode CVideoPlayerVideo::GetMessage(CDVDMsg** pMsg, unsigned int iTimeoutInMilliSeconds, int &priority)
 {
   MsgQueueReturnCode ret = m_messageQueue.Get(pMsg, iTimeoutInMilliSeconds, priority);
-  m_processInfo.SetLevelVQ(m_messageQueue.GetLevel());
+  SetLevel();
   return ret;
 }
 
@@ -305,15 +308,17 @@ void CVideoPlayerVideo::Process()
   int iDropDirective;
   bool onlyPrioMsgs = false;
 
+  m_picture.Reset();
   m_videoStats.Start();
   m_droppingStats.Reset();
   m_iDroppedFrames = 0;
   m_rewindStalled = false;
   m_outputSate = OUTPUT_NORMAL;
+  m_pts = DVD_NOPTS_VALUE;
 
   while (!m_bStop)
   {
-    int iQueueTimeOut = (int)(m_stalled ? frametime : frametime * 10) / 1000;
+    int iQueueTimeOut = (int)(m_stalled ? frametime * 10 : frametime * 11) / 10000;
     int iPriority = 0;
 
     if (m_syncState == IDVDStreamPlayer::SYNC_WAITSYNC)
@@ -447,6 +452,7 @@ void CVideoPlayerVideo::Process()
       m_packets.clear();
       pts = 0;
       m_rewindStalled = false;
+      m_pts = DVD_NOPTS_VALUE;
 
       m_ptsTracker.Flush();
       //we need to recalculate the framerate
@@ -574,6 +580,7 @@ void CVideoPlayerVideo::Process()
         {
           onlyPrioMsgs = true;
         }
+        m_pts = pPacket->pts;
       }
       else
       {
@@ -900,6 +907,7 @@ CVideoPlayerVideo::EOutputState CVideoPlayerVideo::OutputPicture(const VideoPict
   }
 
   int timeToDisplay = DVD_TIME_TO_MSEC(pPicture->pts - iPlayingClock);
+  std::chrono::time_point<std::chrono::system_clock> now(std::chrono::system_clock::now());
 
   // make sure waiting time is not negative
   int maxWaitTime = std::min(std::max(timeToDisplay + 500, 50), 500);
@@ -907,6 +915,8 @@ CVideoPlayerVideo::EOutputState CVideoPlayerVideo::OutputPicture(const VideoPict
   if (m_speed > DVD_PLAYSPEED_NORMAL)
     maxWaitTime = std::max(timeToDisplay, 0);
   int buffer = m_renderManager.WaitForBuffer(m_bAbortOutput, maxWaitTime);
+  CLog::Log(LOGDEBUG,"CVideoPlayerVideo::%s - ttd:%dms pts:%0.3lf Clock:%0.3f Level:%d elapsed:%0.3fms",
+        __FUNCTION__, timeToDisplay, pPicture->pts/1000000, iPlayingClock/1000000.0, buffer, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - now).count() / 1000.0);
   if (buffer < 0)
   {
     return OUTPUT_AGAIN;

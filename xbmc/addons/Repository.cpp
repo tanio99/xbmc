@@ -128,7 +128,7 @@ CRepository::DirInfo CRepository::ParseDirConfiguration(cp_cfg_element_t* config
     dir.hashType = CDigest::TypeFromString(hashStr);
     if (dir.hashType == CDigest::Type::MD5)
     {
-      CLog::Log(LOGWARNING, "Repository has MD5 hashes enabled - this hash function is broken and will only guard against unintentional data corruption");
+      CLog::Log(LOGDEBUG, "Repository has MD5 hashes enabled - this hash function is broken and will only guard against unintentional data corruption");
     }
   }
 
@@ -170,11 +170,11 @@ CRepository::CRepository(CAddonInfo addonInfo, DirList dirs)
     CURL datadir(dir.datadir);
     if (datadir.IsProtocol("http"))
     {
-      CLog::Log(LOGWARNING, "Repository add-on {} uses plain HTTP for add-on downloads in path {} - this is insecure and will make your Kodi installation vulnerable to attacks if enabled!", ID(), datadir.GetRedacted());
+      CLog::Log(LOGDEBUG, "Repository add-on {} uses plain HTTP for add-on downloads in path {} - this is insecure and will make your Kodi installation vulnerable to attacks if enabled!", ID(), datadir.GetRedacted());
     }
     else if (datadir.IsProtocol("https") && datadir.HasProtocolOption("verifypeer") && datadir.GetProtocolOption("verifypeer") == "false")
     {
-      CLog::Log(LOGWARNING, "Repository add-on {} disabled peer verification for add-on downloads in path {} - this is insecure and will make your Kodi installation vulnerable to attacks if enabled!", ID(), datadir.GetRedacted());
+      CLog::Log(LOGDEBUG, "Repository add-on {} disabled peer verification for add-on downloads in path {} - this is insecure and will make your Kodi installation vulnerable to attacks if enabled!", ID(), datadir.GetRedacted());
     }
   }
 }

@@ -200,7 +200,7 @@ void CAdvancedSettings::Initialize()
   m_cddbAddress = "freedb.freedb.org";
   m_addSourceOnTop = false;
 
-  m_handleMounting = g_application.IsStandAlone();
+  m_handleMounting = false;
 
   m_fullScreenOnMovieStart = true;
   m_cachePath = "special://temp/";

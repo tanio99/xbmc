@@ -47,7 +47,7 @@ bool CGUIWindowSystemInfo::OnMessage(CGUIMessage& message)
     case GUI_MSG_WINDOW_INIT:
     {
       CGUIWindow::OnMessage(message);
-      SET_CONTROL_LABEL(52, CSysInfo::GetAppName() + " " + CSysInfo::GetVersion());
+      SET_CONTROL_LABEL(52, "OSMC running " + CSysInfo::GetAppName() + " " + CSysInfo::GetVersion());
       SET_CONTROL_LABEL(53, CSysInfo::GetBuildDate());
       CONTROL_ENABLE_ON_CONDITION(CONTROL_BT_PVR, CServiceBroker::GetPVRManager().IsStarted());
       return true;
@@ -97,7 +97,6 @@ void CGUIWindowSystemInfo::FrameMove()
     SetControlLabel(i++, "%s %s", 13283, SYSTEM_OS_VERSION_INFO);
     SetControlLabel(i++, "%s: %s", 12390, SYSTEM_UPTIME);
     SetControlLabel(i++, "%s: %s", 12394, SYSTEM_TOTALUPTIME);
-    SetControlLabel(i++, "%s: %s", 12395, SYSTEM_BATTERY_LEVEL);
   }
 
   else if (m_section == CONTROL_BT_STORAGE)
@@ -120,8 +119,6 @@ void CGUIWindowSystemInfo::FrameMove()
     SetControlLabel(i++, "%s: %s", 150, NETWORK_IP_ADDRESS);
     SetControlLabel(i++, "%s: %s", 13159, NETWORK_SUBNET_MASK);
     SetControlLabel(i++, "%s: %s", 13160, NETWORK_GATEWAY_ADDRESS);
-    SetControlLabel(i++, "%s: %s", 13161, NETWORK_DNS1_ADDRESS);
-    SetControlLabel(i++, "%s: %s", 20307, NETWORK_DNS2_ADDRESS);
     SetControlLabel(i++, "%s %s", 13295, SYSTEM_INTERNET_STATE);
   }
 
