@@ -2929,6 +2929,11 @@ msgctxt "#636"
 msgid "Custom"
 msgstr ""
 
+#: xbmc/video/dialogs/GUIDialogVideoSettings.cpp
+msgctxt "#10636"
+msgid "Use HDMI AVI signalling"
+msgstr "Send 4:3 a/r signal through HDMI"
+
 msgctxt "#637"
 msgid "ReplayGain"
 msgstr ""

@@ -318,7 +318,7 @@ void CVideoPlayerVideo::Process()
 
   while (!m_bStop)
   {
-    int iQueueTimeOut = (int)(m_stalled ? frametime * 10 : frametime * 11) / 10000;
+    int iQueueTimeOut = (int)(m_stalled ? frametime : frametime * 10) / 1000;
     int iPriority = 0;
 
     if (m_syncState == IDVDStreamPlayer::SYNC_WAITSYNC)
@@ -915,7 +915,7 @@ CVideoPlayerVideo::EOutputState CVideoPlayerVideo::OutputPicture(const VideoPict
   if (m_speed > DVD_PLAYSPEED_NORMAL)
     maxWaitTime = std::max(timeToDisplay, 0);
   int buffer = m_renderManager.WaitForBuffer(m_bAbortOutput, maxWaitTime);
-  CLog::Log(LOGDEBUG,"CVideoPlayerVideo::%s - ttd:%dms pts:%0.3lf Clock:%0.3f Level:%d elapsed:%0.3fms",
+  CLog::Log(LOGDEBUG, LOGVIDEO, "CVideoPlayerVideo::%s - ttd:%dms pts:%0.3lf Clock:%0.3f Level:%d elapsed:%0.3fms",
         __FUNCTION__, timeToDisplay, pPicture->pts/1000000, iPlayingClock/1000000.0, buffer, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - now).count() / 1000.0);
   if (buffer < 0)
   {

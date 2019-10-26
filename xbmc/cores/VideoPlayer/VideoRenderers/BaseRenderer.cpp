@@ -119,29 +119,44 @@ void CBaseRenderer::CalcNormalRenderRect(float offsetX, float offsetY, float wid
   // and the output pixel ratio setting)
 
   float outputFrameRatio = inputFrameRatio / CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().fPixelRatio;
+  
+  static int countdown = 0;
 
   std::string hdmiAspect;
-  if ((MathUtils::FloatEquals(inputFrameRatio, 4.0f / 3.0f, 0.01f) &&
-      !g_application.GetAppPlayer().IsPaused()) &&
-      (m_videoSettings.m_ViewMode == ViewModeNormal))
+  SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/aspect", hdmiAspect);
+  
+  if (((MathUtils::FloatEquals(inputFrameRatio, 4.0f / 3.0f, 0.01f) &&
+      !MathUtils::FloatEquals(inputFrameRatio, (float) m_sourceWidth / (float) m_sourceHeight, 0.01f)) ||
+      (StringUtils::EndsWith(hdmiAspect, "0x01/0x08") && countdown > 0)) &&
+      CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_VIDEOPLAYER_STRETCH43) == ViewModeHDMIAVI &&
+      m_videoSettings.m_ViewMode == ViewModeNormal)
   {
-    CLog::Log(LOGDEBUG, "Setting aspect to 4:3");
-    SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aspect", 1);
+    if (g_application.GetAppPlayer().IsPaused())
+      countdown = 20;
+    else if (countdown > 0)
+      countdown--;
+    
+    if (countdown > 0 || MathUtils::FloatEquals(inputFrameRatio, 4.0f / 3.0f, 0.01f))
+    {
+      if (!StringUtils::EndsWith(hdmiAspect, "0x01/0x08"))
+      {
+        CLog::Log(LOGDEBUG, "CBaseRenderer::CalcNormalRenderRect Setting aspect to 4:3");
+        SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aspect", 1);
+      }
+      outputFrameRatio = ((float) CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iWidth) /
+          ((float) CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iHeight);
+    }
   }
   else
   {
-    CLog::Log(LOGDEBUG, "Setting aspect to 16:9");
-    SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aspect", 2);
+    if (!StringUtils::EndsWith(hdmiAspect, "0x02/0x08"))
+    {
+      CLog::Log(LOGDEBUG, "CBaseRenderer::CalcNormalRenderRect Setting aspect to 16:9");
+      SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aspect", 2);
+    }
+    if (CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iWidth == 720)
+      outputFrameRatio *= 3.0f / 4.0f;
   }
-  
-  SysfsUtils::GetString("/sys/class/amhdmitx/amhdmitx0/aspect", hdmiAspect);
-  if (StringUtils::EndsWith(hdmiAspect, "0x01/0x08"))
-  {
-    outputFrameRatio = ((float) CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iWidth) /
-        ((float) CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iHeight);
-  }
-  else if (CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iWidth == 720)
-    outputFrameRatio *= 3.0f / 4.0f;
 
   // allow a certain error to maximize size of render area
   float fCorrection = width / height / outputFrameRatio - 1.0f;
