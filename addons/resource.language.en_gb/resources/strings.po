@@ -21756,6 +21756,12 @@ msgctxt "#39116"
 msgid "Episode plot"
 msgstr ""
 
+#. Label for component level debug logging setting
+#: xbmc/settings/AdvancedSettings.cpp
+msgctxt "#39117"
+msgid "Verbose logging for the [B]Announcer[/B] component"
+msgstr ""
+
 #: Description of display setting with label # 13133
 msgctxt "#39117"
 msgid "Enable this to force RGB output for some legacy TVs such as Philips 2009 era TVs. Fixes blue / green screen flashes. Requires reboot."
