@@ -150,6 +150,15 @@ bool aml_permissions()
     {
       CLog::Log(LOGERROR, "AML: no rw on /sys/class/display/mode");
     }
+    if (!SysfsUtils::HasRW("/sys/class/amhdmitx/amhdmitx0/phy"))
+    {
+      CLog::Log(LOGERROR, "AML: no rw on /sys/class/amhdmitx/amhdmitx0/phy");
+    }
+    if (!SysfsUtils::HasRW("/sys/module/amvideo/parameters/framepacking_support"))
+    {
+      CLog::Log(LOGERROR, "AML: no rw on /sys/module/amvideo/parameters/framepacking_support");
+    }
+
   }
 
   return permissions_ok == 1;
@@ -473,15 +482,23 @@ bool aml_get_native_resolution(RESOLUTION_INFO *res)
   return result;
 }
 
+static void aml_enable_PHY(bool enable)
+{
+    SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/phy", enable ? "1" : "0");
+}
+
 bool aml_set_native_resolution(const RESOLUTION_INFO &res, std::string framebuffer_name, const int stereo_mode)
 {
   bool result = false;
 
-  aml_handle_display_stereo_mode(RENDER_STEREO_MODE_OFF);
-  result = aml_set_display_resolution(res, framebuffer_name);
+  aml_enable_PHY(false);
 
-  aml_handle_scale(res);
   aml_handle_display_stereo_mode(stereo_mode);
+  result = aml_set_display_resolution(res, framebuffer_name);
+  aml_handle_scale(res);
+
+  aml_enable_PHY(true);
+
 
   return result;
 }
@@ -552,23 +569,15 @@ bool aml_get_preferred_resolution(RESOLUTION_INFO *res)
 bool aml_set_display_resolution(const RESOLUTION_INFO &res, std::string framebuffer_name)
 {
   std::string mode = res.strId.c_str();
-  std::string cur_mode;
 
-  SysfsUtils::GetString("/sys/class/display/mode", cur_mode);
+  // switch display resolution
+  SysfsUtils::SetString("/sys/class/display/mode", "null");
 
-  if (aml_has_frac_rate_policy())
-  {
-    if (cur_mode == mode)
-      SysfsUtils::SetString("/sys/class/display/mode", "null");
+  int fractional_rate = (res.fRefreshRate == floor(res.fRefreshRate)) ? 0 : 1;
+  CLog::Log(LOGDEBUG, "AMLUtils::aml_set_display_resolution setting frac_rate_policy to %d", fractional_rate);
+  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/frac_rate_policy", fractional_rate);
 
-    int fractional_rate = (res.fRefreshRate == floor(res.fRefreshRate)) ? 0 : 1;
-    SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/frac_rate_policy", fractional_rate);
-  }
-  else if (cur_mode == mode)
-  {
-    // Don't set the same mode as current
-    return true;
-  }
+  CLog::Log(LOGDEBUG, "AMLUtils::aml_set_display_resolution new video mode is %s", mode.c_str());
 
   SysfsUtils::SetString("/sys/class/display/mode", mode.c_str());
 
@@ -672,6 +681,22 @@ void aml_disable_freeScale()
   SysfsUtils::SetInt("/sys/class/graphics/fb1/free_scale", 0);
 }
 
+static bool isMaliBug()
+{
+  std::string model;
+
+  SysfsUtils::GetString("/proc/device-tree/model", model);
+  if (model.rfind("Vero4K", 0) == 0)
+  {
+    std::string buggyMali;
+
+    SysfsUtils::GetString("/sys/firmware/devicetree/base/buggymali", buggyMali);
+    return buggyMali.rfind("true", 0) == 0;
+  }
+
+  return false;
+}
+
 void aml_set_framebuffer_resolution(const RESOLUTION_INFO &res, std::string framebuffer_name)
 {
   aml_set_framebuffer_resolution(res.iWidth, res.iHeight, framebuffer_name);
@@ -689,8 +714,18 @@ void aml_set_framebuffer_resolution(int width, int height, std::string framebuff
     {
       vinfo.xres = width;
       vinfo.yres = height;
-      vinfo.xres_virtual = 1920;
-      vinfo.yres_virtual = 2160;
+      vinfo.xres_virtual = width;
+      vinfo.yres_virtual = height*2;
+
+      if (isMaliBug() && height < 1080)
+      {
+        // There seems to be a bug in libMali or the Mali driver which can't handle
+        // heights less than 1080 correctly. In this case we set the same virtual
+        // resolution that was used when libMali was initialized.
+        vinfo.xres_virtual = 1920;
+        vinfo.yres_virtual = 2160;
+      }
+
       vinfo.bits_per_pixel = 32;
       vinfo.activate = FB_ACTIVATE_ALL;
       ioctl(fd0, FBIOPUT_VSCREENINFO, &vinfo);
