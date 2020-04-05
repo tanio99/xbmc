@@ -462,7 +462,7 @@ bool CDVDDemuxFFmpeg::Open(std::shared_ptr<CDVDInputStream> pInput, bool streami
   bool isBluray = pInput->IsStreamType(DVDSTREAM_TYPE_BLURAY);
   if (iformat && (strcmp(iformat->name, "mpegts") == 0) && !fileinfo && !isBluray)
   {
-    av_opt_set_int(m_pFormatContext, "analyzeduration", 500000, 0);
+    av_opt_set_int(m_pFormatContext, "analyzeduration", 2000000, 0);
     m_checkTransportStream = true;
     skipCreateStreams = true;
   }
@@ -597,16 +597,6 @@ bool CDVDDemuxFFmpeg::Open(std::shared_ptr<CDVDInputStream> pInput, bool streami
   m_dtsAtDisplayTime = DVD_NOPTS_VALUE;
   m_startTime = 0;
   m_seekStream = -1;
-
-  if (m_checkTransportStream && m_streaminfo)
-  {
-    int64_t duration = m_pFormatContext->duration;
-    std::shared_ptr<CDVDInputStream> pInputStream = m_pInput;
-    Dispose();
-    if (!Open(pInputStream, false))
-      return false;
-    m_pFormatContext->duration = duration;
-  }
 
   // seems to be a bug in ffmpeg, hls jumps back to start after a couple of seconds
   // this cures the issue
@@ -1113,7 +1103,8 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
     else if (stream->type == STREAM_VIDEO)
     {
       if (static_cast<CDemuxStreamVideo*>(stream)->iWidth != m_pFormatContext->streams[pPacket->iStreamId]->codecpar->width ||
-          static_cast<CDemuxStreamVideo*>(stream)->iHeight != m_pFormatContext->streams[pPacket->iStreamId]->codecpar->height)
+          static_cast<CDemuxStreamVideo*>(stream)->iHeight != m_pFormatContext->streams[pPacket->iStreamId]->codecpar->height ||
+		  (stream->disabled && stream->ExtraSize != m_pFormatContext->streams[pPacket->iStreamId]->codecpar->extradata_size))
       {
         // content has changed
         stream = AddStream(pPacket->iStreamId);
@@ -1531,8 +1522,15 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
         //average fps is more accurate for mkv files
         if (m_bMatroska && pStream->avg_frame_rate.den && pStream->avg_frame_rate.num)
         {
-          st->iFpsRate = pStream->avg_frame_rate.num;
-          st->iFpsScale = pStream->avg_frame_rate.den;
+          double fps = (double) pStream->avg_frame_rate.num / (double) pStream->avg_frame_rate.den;
+          if (fps > 500. && r_frame_rate.num > 0 && r_frame_rate.den > 0) {
+            // fps seems to be nonsense so we're use real base framerate instead
+            st->iFpsRate = r_frame_rate.num;
+            st->iFpsScale = r_frame_rate.den;
+          } else {
+            st->iFpsRate = pStream->avg_frame_rate.num;
+            st->iFpsScale = pStream->avg_frame_rate.den;
+          }
         }
         else if(r_frame_rate.den && r_frame_rate.num)
         {
