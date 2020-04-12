@@ -1465,6 +1465,17 @@ void CDVDDemuxFFmpeg::DisposeStreams()
   m_parsers.clear();
 }
 
+bool CDVDDemuxFFmpeg::isFpsNonsense(const AVRational &frameRate)
+{
+  if (frameRate.num == 0 || frameRate.den == 0)
+  {
+	return true;
+  }
+
+  const double fps = (double) frameRate.num / (double) frameRate.den;
+  return fps > 500.;
+}
+
 CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
 {
   AVStream* pStream = m_pFormatContext->streams[streamIdx];
@@ -1519,23 +1530,33 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
 
         AVRational r_frame_rate = pStream->r_frame_rate;
 
+        if (isFpsNonsense(r_frame_rate))
+        {
+          r_frame_rate.num = 0;
+          r_frame_rate.den = 0;
+        }
+
+        if (isFpsNonsense(pStream->avg_frame_rate))
+        {
+          pStream->avg_frame_rate.num = 0;
+          pStream->avg_frame_rate.den = 0;
+        }
+
         //average fps is more accurate for mkv files
         if (m_bMatroska && pStream->avg_frame_rate.den && pStream->avg_frame_rate.num)
         {
-          double fps = (double) pStream->avg_frame_rate.num / (double) pStream->avg_frame_rate.den;
-          if (fps > 500. && r_frame_rate.num > 0 && r_frame_rate.den > 0) {
-            // fps seems to be nonsense so we're use real base framerate instead
-            st->iFpsRate = r_frame_rate.num;
-            st->iFpsScale = r_frame_rate.den;
-          } else {
-            st->iFpsRate = pStream->avg_frame_rate.num;
-            st->iFpsScale = pStream->avg_frame_rate.den;
-          }
+          st->iFpsRate = pStream->avg_frame_rate.num;
+          st->iFpsScale = pStream->avg_frame_rate.den;
         }
         else if(r_frame_rate.den && r_frame_rate.num)
         {
           st->iFpsRate = r_frame_rate.num;
           st->iFpsScale = r_frame_rate.den;
+        }
+        else if(pStream->avg_frame_rate.den && pStream->avg_frame_rate.num)
+        {
+          st->iFpsRate = pStream->avg_frame_rate.num;
+          st->iFpsScale = pStream->avg_frame_rate.den;
         }
         else
         {
