@@ -510,7 +510,8 @@ int CSMBFile::Truncate(int64_t size)
 
 ssize_t CSMBFile::Read(void *lpBuf, size_t uiBufSize)
 {
-  uiBufSize = 32768;
+  if (uiBufSize > SSIZE_MAX)
+    uiBufSize = SSIZE_MAX;
 
   if (m_fd == -1)
     return -1;

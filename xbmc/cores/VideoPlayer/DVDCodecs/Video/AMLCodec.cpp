@@ -1897,6 +1897,21 @@ bool CAMLCodec::AddData(uint8_t *pData, size_t iSize, double dts, double pts)
   if (!m_opened || !pData)
     return false;
 
+  // video contrast adjustment.
+  int contrast = m_processInfo.GetVideoSettings().m_Contrast;
+  if (contrast != m_contrast)
+  {
+    SetVideoContrast(contrast);
+    m_contrast = contrast;
+  }
+  // video brightness adjustment.
+  int brightness = m_processInfo.GetVideoSettings().m_Brightness;
+  if (brightness != m_brightness)
+  {
+    SetVideoBrightness(brightness);
+    m_brightness = brightness;
+  }
+
   // band fix
 
   SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/debug", "round1");

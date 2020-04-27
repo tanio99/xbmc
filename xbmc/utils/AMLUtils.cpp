@@ -717,11 +717,11 @@ void aml_set_framebuffer_resolution(int width, int height, std::string framebuff
       vinfo.xres_virtual = width;
       vinfo.yres_virtual = height*2;
 
-      if (isMaliBug() && height < 1080)
+      if (isMaliBug())
       {
         // There seems to be a bug in libMali or the Mali driver which can't handle
-        // heights less than 1080 correctly. In this case we set the same virtual
-        // resolution that was used when libMali was initialized.
+        // virtual resolutions other than those originally set when libMali was
+        // initialized.
         vinfo.xres_virtual = 1920;
         vinfo.yres_virtual = 2160;
       }
