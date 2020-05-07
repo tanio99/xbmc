@@ -117,7 +117,7 @@ void CALSADeviceMonitor::FDEventCallback(int id, int fd, short revents, void *da
     }
     else if (strcmp(action, "add") == 0 && strcmp(udev_device_get_subsystem(device),"bluetooth") == 0)
     {
-      usleep(2000 * 1000); // really need to probe dbus here
+      usleep(4000 * 1000); // really need to probe dbus here
       audioDevicesChanged = true;
     }
     else if (strcmp(action, "remove") == 0)
