@@ -282,6 +282,7 @@ bool CSystemGUIInfo::GetLabel(std::string& value, const CFileItem *item, int con
        std::string hostname("osmc");
        CServiceBroker::GetNetwork().GetHostName(hostname); 
        strLabel = hostname.c_str();
+       value = strLabel;
        return true;
     }
     case SYSTEM_STEREOSCOPIC_MODE:

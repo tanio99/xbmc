@@ -55,7 +55,8 @@ namespace PERIPHERALS
   {
     STATE_SWITCH_TOGGLE,
     STATE_ACTIVATE_SOURCE,
-    STATE_STANDBY
+    STATE_STANDBY,
+    STATE_ACTIVATE_SOURCE_OSMC_WAKEUP
   } CecStateChange;
 
   class CPeripheral : public KODI::JOYSTICK::IInputProvider,

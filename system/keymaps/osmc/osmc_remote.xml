@@ -47,7 +47,7 @@
 			<stop>Stop</stop>
 			<volume_down>VolumeDown</volume_down>
 			<volume_up>VolumeUp</volume_up>
-			<f2>Notification(OSMC Remote Controller, Low Battery Please Replace,5000)</f2>
+			<f2>Notification(OSMC Remote Controller,$LOCALIZE[13050],5000)</f2>
 		</keyboard>
 	</global>
 	<Home>

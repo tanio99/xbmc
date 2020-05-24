@@ -66,6 +66,7 @@ set(HEADERS AppParamParser.h
             IProgressCallback.h
             InfoScanner.h
             LangInfo.h
+            LockType.h
             MediaSource.h
             NfoFile.h
 	    OSMCHelper.h

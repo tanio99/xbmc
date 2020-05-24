@@ -3663,6 +3663,11 @@ void CApplication::CheckScreenSaverAndDPMS()
 //activate screensaver for OSMC
 void CApplication::ActivateScreenSaverStandby()
 {
+  if (m_bVeroStandby) {
+	CLog::Log(LOGINFO, "Ignoring standby request: we are already in standby");
+	return;
+  }
+
   CLog::Log(LOGINFO, "Activating Vero standby mode");
     if (m_appPlayer.IsPlayingVideo())
       StopPlaying();
@@ -3693,8 +3698,9 @@ void CApplication::ToggleStandby()
 	hpdlock = "hpd_lock0";
   CLog::Log(LOGINFO, "CApplication::ToggleStandby -- HPD locking will now be %s", hpdlock.c_str());
   SysfsUtils::SetString("/sys/class/amhdmitx/amhdmitx0/debug", hpdlock);
-  if (m_bVeroStandby)
-	CApplicationMessenger::GetInstance().PostMsg(TMSG_CECACTIVATESOURCE); // wake cec
+  if (m_bVeroStandby) {
+	CApplicationMessenger::GetInstance().PostMsg(TMSG_CECACTIVATESOURCEOSMCWAKEUP); // wake cec
+  }
 
   std::string strStandbyScript;
   if (m_bVeroStandby)
