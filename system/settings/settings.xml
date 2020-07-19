@@ -2007,6 +2007,11 @@
             </dependency>
           </dependencies>
         </setting>
+        <setting id="smb2.fixmtu" type="boolean" label="36632" help="36633">
+          <level>2</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
       </group>
     </category>
     <category id="weather" label="8" help="36316">

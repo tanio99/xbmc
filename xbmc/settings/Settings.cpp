@@ -326,6 +326,7 @@ const std::string CSettings::SETTING_SMB_WORKGROUP = "smb.workgroup";
 const std::string CSettings::SETTING_SMB_MINPROTOCOL = "smb.minprotocol";
 const std::string CSettings::SETTING_SMB_MAXPROTOCOL = "smb.maxprotocol";
 const std::string CSettings::SETTING_SMB_LEGACYSECURITY = "smb.legacysecurity";
+const std::string CSettings::SETTING_SMB2_FIXMTU = "smb2.fixmtu";
 const std::string CSettings::SETTING_VIDEOSCREEN_MONITOR = "videoscreen.monitor";
 const std::string CSettings::SETTING_VIDEOSCREEN_SCREEN = "videoscreen.screen";
 const std::string CSettings::SETTING_VIDEOSCREEN_WHITELIST = "videoscreen.whitelist";

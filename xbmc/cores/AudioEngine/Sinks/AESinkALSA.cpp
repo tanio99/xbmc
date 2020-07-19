@@ -206,7 +206,7 @@ inline CAEChannelInfo CAESinkALSA::GetChannelLayout(const AEAudioFormat& format,
   {
     /* ask for the actual map */
     snd_pcm_chmap_t* actualMap = snd_pcm_get_chmap(m_pcm);
-    if (actualMap)
+    if (actualMap && m_device == "default")
     {
       alsaMapStr = ALSAchmapToString(actualMap);
 
@@ -415,6 +415,7 @@ snd_pcm_chmap_t* CAESinkALSA::SelectALSAChannelMap(const CAEChannelInfo& info)
   for (snd_pcm_chmap_query_t* supportedMap = supportedMaps[i++];
        supportedMap; supportedMap = supportedMaps[i++])
   {
+    CLog::Log(LOGDEBUG, "CAESinkALSA::SelectALSAChannelMap checking available maps i: %d channels %d requested channels %d", i, supportedMap->map.channels, info.Count());
     if (supportedMap->map.channels == info.Count())
     {
       CAEChannelInfo candidate = ALSAchmapToAEChannelMap(&supportedMap->map);
@@ -594,6 +595,28 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
   snd_config_t *config;
   snd_config_copy(&config, snd_config);
 
+  /* opening a USB soundcard in stereo seems to be the ony way to
+   enumerate channelmaps reliably */
+  if (!OpenPCMDevice(device, AESParams, 2, &m_pcm, config))
+  {
+    CLog::Log(LOGERROR, "CAESinkALSA::Initialize - failed to initialize device \"%s\" with params %s even for stereo",
+        device.c_str(), AESParams.c_str());
+    snd_config_delete(config);
+    return false;
+  }
+
+  snd_pcm_chmap_t* selectedChmap = NULL;
+  if (!m_passthrough)
+  {
+    selectedChmap = SelectALSAChannelMap(format.m_channelLayout);
+    if (selectedChmap)
+    {
+      CLog::Log(LOGDEBUG, "CAESinkALSA::Initialize - found a channel map, channels %d", selectedChmap->channels);
+      /* update wanted channel count according to the selected map */
+      inconfig.channels = selectedChmap->channels;
+    }
+  }
+
   if (!OpenPCMDevice(device, AESParams, inconfig.channels, &m_pcm, config))
   {
     CLog::Log(LOGERROR, "CAESinkALSA::Initialize - failed to initialize device \"%s\"", device.c_str());
@@ -610,64 +633,47 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
   /* free the sound config */
   snd_config_delete(config);
 
-  snd_pcm_chmap_t* selectedChmap = NULL;
-  if (!m_passthrough)
-  {
-    selectedChmap = SelectALSAChannelMap(format.m_channelLayout);
-    if (selectedChmap)
-    {
-      /* update wanted channel count according to the selected map */
-      inconfig.channels = selectedChmap->channels;
-    }
-  }
-
   if (!InitializeHW(inconfig, outconfig) || !InitializeSW(outconfig))
   {
     free(selectedChmap);
     return false;
   }
 
+  /* set up channel layout defaults */
+  if (outconfig.channels == 2 || m_passthrough)
+    speaker_layout = 0;
+  else if (format.m_channelLayout.Count() <= 4)
+    speaker_layout = 8;
+  else if (format.m_channelLayout.Count() <= 6)
+    speaker_layout = 11;
+  else
+    speaker_layout = 19;
+
   if (selectedChmap)
   {
-	  /* Channel layout should match one of those offered by the sink
-	   * Find out which one it is
-	   */
-
-	  snd_pcm_chmap_query_t** supportedMaps;
-	  supportedMaps = snd_pcm_query_chmaps(m_pcm);
-	  /* set default stereo */
-      SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", 0);
+    /* refine the speaker channel layout for HDMI LPCM */
+    if (device == "default")
+    {
+      snd_pcm_chmap_query_t** supportedMaps;
+      supportedMaps = snd_pcm_query_chmaps(m_pcm);
       int i = 0;
-	  for (snd_pcm_chmap_query_t* supportedMap = supportedMaps[i++];
-			  supportedMap; supportedMap = supportedMaps[i++])
-	  {
-		  if (ALSAchmapToString(&supportedMap->map) == ALSAchmapToString(selectedChmap)) {
-			  speaker_layout = --i;
-			  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", speaker_layout);
-			  break;
-		  }
-	  }
-
-    /* failure is OK, that likely just means the selected chmap is fixed already */
-    snd_pcm_set_chmap(m_pcm, selectedChmap);
+      for (snd_pcm_chmap_query_t* supportedMap = supportedMaps[i++];
+          supportedMap; supportedMap = supportedMaps[i++])
+      {
+        if (ALSAchmapToString(&supportedMap->map) == ALSAchmapToString(selectedChmap))
+        {
+          speaker_layout = --i;
+          break;
+        }
+      }
+      /* failure is OK, that likely just means the selected chmap is fixed already */
+      snd_pcm_set_chmap(m_pcm, selectedChmap);
+    }
     free(selectedChmap);
   }
-  else
-  {
-	  /* while i2s driver is broken, this is essential */
-	  if (outconfig.channels == 2 || m_passthrough)
-	  {
-		  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", 0);
-  		CLog::Log(LOGINFO, "CAESinkALSA::Initialize - setting default aud_ch to 0");
-	  }
-	  else
-	  {
-		SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", 19);
-   		CLog::Log(LOGINFO, "CAESinkALSA::Initialize - setting default aud_ch to 19");
-	  }
-
-  }
-
+  
+  SysfsUtils::SetInt("/sys/class/amhdmitx/amhdmitx0/aud_ch", speaker_layout);
+  CLog::Log(LOGINFO, "CAESinkALSA::Initialize - speaker layout %d", speaker_layout);
 
   // we want it blocking
   snd_pcm_nonblock(m_pcm, 0);
@@ -1276,11 +1282,7 @@ void CAESinkALSA::EnumerateDevicesEx(AEDeviceInfoList &list, bool force)
 
       else if (baseName != "default"
             && baseName != "sysdefault"
-            && baseName != "surround40"
-            && baseName != "surround41"
-            && baseName != "surround50"
-            && baseName != "surround51"
-            && baseName != "surround71"
+            && baseName.find("surround") == std::string::npos
             && baseName != "hw"
             && baseName != "dmix"
             && baseName != "plughw"

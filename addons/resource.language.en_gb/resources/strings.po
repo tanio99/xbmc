@@ -20535,6 +20535,14 @@ msgctxt "#36631"
 msgid "Force weak SMBv1 security for compatibility with the USB sharing features on some WiFi routers and NAS devices."
 msgstr ""
 
+msgctxt "#36632"
+msgid "Mitigate MTU issues with SMBv2"
+msgstr ""
+
+msgctxt "#36633"
+msgid "Enabling this option can resolve some connectivity issues when connecting via SMBv2, however doing so will reduce throughput regardless of SMB version"
+msgstr ""
+
 #empty strings from id 36632 to 36898
 
 #. Description of setting with label #729 "Enable SSL"

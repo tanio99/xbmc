@@ -284,6 +284,7 @@ public:
   static const std::string SETTING_SMB_MINPROTOCOL;
   static const std::string SETTING_SMB_MAXPROTOCOL;
   static const std::string SETTING_SMB_LEGACYSECURITY;
+  static const std::string SETTING_SMB2_FIXMTU;
   static const std::string SETTING_VIDEOSCREEN_MONITOR;
   static const std::string SETTING_VIDEOSCREEN_SCREEN;
   static const std::string SETTING_VIDEOSCREEN_WHITELIST;

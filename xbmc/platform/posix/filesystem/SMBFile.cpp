@@ -510,8 +510,11 @@ int CSMBFile::Truncate(int64_t size)
 
 ssize_t CSMBFile::Read(void *lpBuf, size_t uiBufSize)
 {
-  if (uiBufSize > SSIZE_MAX)
-    uiBufSize = SSIZE_MAX;
+
+  const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+
+  if (settings->GetBool(CSettings::SETTING_SMB2_FIXMTU))
+    uiBufSize = 32768;
 
   if (m_fd == -1)
     return -1;
