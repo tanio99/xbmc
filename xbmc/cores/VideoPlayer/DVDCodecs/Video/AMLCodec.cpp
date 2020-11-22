@@ -1640,14 +1640,26 @@ bool CAMLCodec::OpenDecoder(CDVDStreamInfo &hints)
   am_private->gcodec.ratio64     = am_private->video_ratio64;
   am_private->gcodec.param       = NULL;
 
-  if (am_private->video_format == VFORMAT_VC1) {
-      SysfsUtils::SetInt("/sys/module/di/parameters/di_debug_flag", 0x10000);
-      SysfsUtils::SetInt("/sys/module/di/parameters/bypass_prog", 0);
+  std::list<EINTERLACEMETHOD> methods;
+
+  if (am_private->video_format == VFORMAT_VC1)
+  {
+    /* add deinterlace options */
+    methods.push_back(EINTERLACEMETHOD::VS_INTERLACEMETHOD_NONE);
+    methods.push_back(EINTERLACEMETHOD::VS_INTERLACEMETHOD_DEINTERLACE);
+    methods.push_back(EINTERLACEMETHOD::VS_INTERLACEMETHOD_AUTO);
+    m_processInfo.SetDeinterlacingMethodDefault(EINTERLACEMETHOD::VS_INTERLACEMETHOD_DEINTERLACE);
+    /* engage deinterlacer for progressive streams */
+    SysfsUtils::SetInt("/sys/module/di/parameters/di_debug_flag", 0x10000);
+    SysfsUtils::SetInt("/sys/module/di/parameters/bypass_prog", 0);
   }
-  else {
-      SysfsUtils::SetInt("/sys/module/di/parameters/di_debug_flag", 0);
-      SysfsUtils::SetInt("/sys/module/di/parameters/bypass_prog", 1);
+  else
+  {
+    methods.clear();
+    SysfsUtils::SetInt("/sys/module/di/parameters/di_debug_flag", 0);
+    SysfsUtils::SetInt("/sys/module/di/parameters/bypass_prog", 1);
   }
+  m_processInfo.UpdateDeinterlacingMethods(methods);
 
   switch(am_private->video_format)
   {
@@ -1896,6 +1908,19 @@ bool CAMLCodec::AddData(uint8_t *pData, size_t iSize, double dts, double pts)
 {
   if (!m_opened || !pData)
     return false;
+
+  /* stop VC-1 decoder sending two fields */
+  if (am_private->video_format == VFORMAT_VC1)
+  {
+    if (m_processInfo.GetVideoSettings().m_InterlaceMethod == VS_INTERLACEMETHOD_NONE)
+    {
+      SysfsUtils::SetInt("/sys/module/amvdec_vc1/parameters/force_prog", 1);
+    }
+    else
+    {
+      SysfsUtils::SetInt("/sys/module/amvdec_vc1/parameters/force_prog", 0);
+    }
+  }
 
   // video contrast adjustment.
   int contrast = m_processInfo.GetVideoSettings().m_Contrast;

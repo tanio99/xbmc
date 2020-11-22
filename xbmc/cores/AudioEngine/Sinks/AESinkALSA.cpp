@@ -844,7 +844,7 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
   bufferSize  = std::min(bufferSize, (snd_pcm_uframes_t) sampleRate / 5);
 #if defined(HAS_LIBAMCODEC)
   bufferSize  = CheckNP2(bufferSize);
-#endif;
+#endif
 
   /*
    According to upstream we should set buffer size first - so make sure it is always at least
